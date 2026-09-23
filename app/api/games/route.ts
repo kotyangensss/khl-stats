@@ -1,53 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { upcomingWindow, pastWindow } from "@/lib/schedule";
 
-// Примеры запросов:
-//   /api/games?status=SCHEDULED&page=1&pageSize=20
-//   /api/games?status=FINISHED&page=2
-//   /api/games?teamId=1
+// /api/games?scope=upcoming&page=1  — сегодняшние (любой статус) + будущие,
+//   окном по DAYS_PER_PAGE дней вперёд от начала сегодняшнего дня
+// /api/games?scope=past&page=1      — завершённые матчи, окном назад
+// /api/games?teamId=42&scope=upcoming — фильтр по команде поверх окна
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
-  const status = searchParams.get("status"); // SCHEDULED | LIVE | FINISHED
-  const teamId = searchParams.get("teamId");
-  const dateFrom = searchParams.get("dateFrom");
-  const dateTo = searchParams.get("dateTo");
-
+  const scope = searchParams.get("scope") === "past" ? "past" : "upcoming";
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? "20")));
+  const teamId = searchParams.get("teamId");
 
-  const where: Prisma.GameWhereInput = {};
+  const { start, end } = scope === "upcoming" ? upcomingWindow(page) : pastWindow(page);
 
-  if (status) where.status = status as Prisma.EnumGameStatusFilter["equals"];
+  const where: Record<string, unknown> = { date: { gte: start, lt: end } };
+  if (scope === "past") where.status = "FINISHED";
   if (teamId) where.OR = [{ teamAId: Number(teamId) }, { teamBId: Number(teamId) }];
-  if (dateFrom || dateTo) {
-    where.date = {
-      ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-      ...(dateTo ? { lte: new Date(dateTo) } : {}),
-    };
-  }
 
-  // Прошедшие матчи логичнее смотреть от новых к старым, будущие — от
-  // ближайших к дальним.
-  const orderDirection = status === "FINISHED" ? "desc" : "asc";
-
-  const [games, total] = await Promise.all([
-    prisma.game.findMany({
-      where,
-      orderBy: { date: orderDirection },
-      include: { teamA: true, teamB: true, arena: true },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.game.count({ where }),
-  ]);
+  const games = await prisma.game.findMany({
+    where,
+    orderBy: { date: scope === "past" ? "desc" : "asc" },
+    include: { teamA: true, teamB: true },
+  });
 
   return NextResponse.json({
     games,
-    total,
+    scope,
     page,
-    pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    rangeStart: start.toISOString(),
+    rangeEnd: end.toISOString(),
   });
 }

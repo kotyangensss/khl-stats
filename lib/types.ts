@@ -1,5 +1,14 @@
 export type Team = { id: number; name: string; logoUrl: string | null };
 
+export type TeamStats = {
+  wins: number;
+  losses: number;
+  otLosses: number;
+  points: number;
+  gamesPlayed: number;
+  rank: number;
+};
+
 export type Game = {
   id: number;
   date: string;

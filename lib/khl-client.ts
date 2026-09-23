@@ -165,9 +165,29 @@ export function flattenGames(games: KhlCalendarResponse["data"]["GAMES"]): RawGa
   return flat;
 }
 
+/**
+ * Момент начала матча в UTC. khl.ru показывает время в московском часовом
+ * поясе — считаем это так же (+03:00), другого способа узнать точнее нет.
+ */
+function gameStartUtc(game: RawGame): Date | null {
+  if (!game.date) return null;
+  const datePart = game.date.slice(0, 10);
+  const timePart = /^\d{1,2}:\d{2}$/.test(game.time_format ?? "") ? game.time_format : "00:00";
+  const parsed = new Date(`${datePart}T${timePart}:00+03:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function mapGameStatus(game: RawGame): "SCHEDULED" | "LIVE" | "FINISHED" {
   if (game.approved === 1) return "FINISHED";
+
   // approved === 0 и есть счёт — вероятно, матч идёт прямо сейчас
   if (Number(game.homeScore) > 0 || Number(game.visitorScore) > 0) return "LIVE";
+
+  // Счёта 0:0 недостаточно, чтобы отличить "ещё не начался" от "идёт, но
+  // пока без голов" — сверяемся со временем начала (+5 мин запаса на
+  // задержки/паузы).
+  const start = gameStartUtc(game);
+  if (start && Date.now() > start.getTime() + 5 * 60 * 1000) return "LIVE";
+
   return "SCHEDULED";
 }

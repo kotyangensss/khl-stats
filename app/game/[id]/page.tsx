@@ -2,9 +2,25 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { computeStandings } from "@/lib/standings";
 import { TeamLogo } from "@/components/TeamLogo";
+import { GameRow } from "@/components/GameRow";
+import type { Game } from "@/lib/types";
 import { overtimeLabel, formatDayHeading } from "@/lib/format";
 import { colors } from "@/lib/theme";
+
+function toGame(g: any): Game {
+  return { ...g, date: g.date.toISOString() };
+}
+
+const sectionHeading: CSSProperties = {
+  fontFamily: "var(--font-display)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  letterSpacing: "0.03em",
+  color: colors.muted,
+  padding: "0 0 0.5rem",
+};
 
 export default async function GamePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,18 +32,50 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
   if (!game) notFound();
 
+  const [standings, recentA, recentB] = await Promise.all([
+    computeStandings(),
+    prisma.game.findMany({
+      where: {
+        status: "FINISHED",
+        id: { not: game.id },
+        OR: [{ teamAId: game.teamAId }, { teamBId: game.teamAId }],
+      },
+      orderBy: { date: "desc" },
+      include: { teamA: true, teamB: true },
+      take: 5,
+    }),
+    prisma.game.findMany({
+      where: {
+        status: "FINISHED",
+        id: { not: game.id },
+        OR: [{ teamAId: game.teamBId }, { teamBId: game.teamBId }],
+      },
+      orderBy: { date: "desc" },
+      include: { teamA: true, teamB: true },
+      take: 5,
+    }),
+  ]);
+
   const ot = overtimeLabel(game.overtime);
   const decided = game.status === "FINISHED";
   const aWon = decided && (game.homeScore ?? 0) > (game.visitorScore ?? 0);
   const bWon = decided && (game.visitorScore ?? 0) > (game.homeScore ?? 0);
   const periods = Array.isArray(game.periodScores) ? (game.periodScores as string[]) : [];
+  const statsA = standings[game.teamAId];
+  const statsB = standings[game.teamBId];
 
   const teamNameStyle = (won: boolean): CSSProperties => ({
     fontFamily: "var(--font-display)",
     fontWeight: won ? 700 : decided ? 500 : 600,
     fontSize: "1.4rem",
-    color: won ? colors.text : decided ? colors.muted : colors.text,
+    color: won ? colors.win : decided ? colors.loss : colors.text,
   });
+
+  const statsStyle: CSSProperties = {
+    fontFamily: "var(--font-display)",
+    color: colors.muted,
+    fontSize: "0.85rem",
+  };
 
   return (
     <main style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "clamp(1.25rem, 5vw, 3rem)" }}>
@@ -54,10 +102,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         >
           <Link
             href={`/team/${game.teamA.id}`}
-            style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}
+            style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}
           >
             <TeamLogo team={game.teamA} size={120} />
             <span style={teamNameStyle(aWon)}>{game.teamA.name}</span>
+            {statsA && (
+              <span style={statsStyle}>
+                {statsA.wins}-{statsA.losses}-{statsA.otLosses} · {statsA.rank}-е место
+              </span>
+            )}
           </Link>
 
           <div style={{ textAlign: "center", minWidth: "8rem" }}>
@@ -92,10 +145,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
           <Link
             href={`/team/${game.teamB.id}`}
-            style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}
+            style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}
           >
             <TeamLogo team={game.teamB} size={120} />
             <span style={teamNameStyle(bWon)}>{game.teamB.name}</span>
+            {statsB && (
+              <span style={statsStyle}>
+                {statsB.wins}-{statsB.losses}-{statsB.otLosses} · {statsB.rank}-е место
+              </span>
+            )}
           </Link>
         </div>
 
@@ -109,6 +167,24 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             ))}
           </div>
         )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(1.5rem, 5vw, 3rem)", marginTop: "3.5rem", textAlign: "left" }}>
+        <div>
+          <div style={sectionHeading}>Последние матчи: {game.teamA.name}</div>
+          {recentA.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
+          {recentA.map((g) => (
+            <GameRow key={g.id} game={toGame(g)} showDate />
+          ))}
+        </div>
+
+        <div>
+          <div style={sectionHeading}>Последние матчи: {game.teamB.name}</div>
+          {recentB.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
+          {recentB.map((g) => (
+            <GameRow key={g.id} game={toGame(g)} showDate />
+          ))}
+        </div>
       </div>
     </main>
   );

@@ -13,6 +13,14 @@ export function formatDayHeading(iso: string) {
   return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
+/** Компактный формат даты для узких списков, напр. на странице команды: "24 сен" */
+export function formatShortDate(iso: string) {
+  const d = new Date(iso);
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+}
+
 export function logoSrc(logoUrl: string | null) {
   if (!logoUrl) return null;
   return logoUrl.startsWith("http") ? logoUrl : `https:${logoUrl}`;

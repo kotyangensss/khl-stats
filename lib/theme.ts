@@ -7,4 +7,6 @@ export const colors = {
   mutedDim: "#5A6B80",
   accent: "#4FC3F7",
   live: "#E5484D",
+  win: "#3DD68C",
+  loss: "#F87171",
 };

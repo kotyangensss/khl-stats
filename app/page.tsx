@@ -1,42 +1,67 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { GameRow } from "@/components/GameRow";
-import type { Game } from "@/lib/types";
+import type { Game, TeamStats } from "@/lib/types";
 import { dayKey, formatDayHeading } from "@/lib/format";
+import { formatRange } from "@/lib/schedule";
 import { colors } from "@/lib/theme";
 
 type GamesResponse = {
   games: Game[];
-  total: number;
+  scope: "upcoming" | "past";
   page: number;
-  pageSize: number;
-  totalPages: number;
+  rangeStart: string;
+  rangeEnd: string;
 };
 
-type Tab = "SCHEDULED" | "LIVE" | "FINISHED";
+type Tab = "upcoming" | "past";
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: "SCHEDULED", label: "Предстоящие" },
-  { key: "LIVE", label: "Идут сейчас" },
-  { key: "FINISHED", label: "Прошедшие" },
+  { key: "upcoming", label: "Предстоящие" },
+  { key: "past", label: "Прошедшие" },
 ];
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("SCHEDULED");
-  const [page, setPage] = useState(1);
+  return (
+    <Suspense fallback={null}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const tab: Tab = searchParams.get("tab") === "past" ? "past" : "upcoming";
+  const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+
   const [data, setData] = useState<GamesResponse | null>(null);
+  const [standings, setStandings] = useState<Record<number, TeamStats>>({});
   const [error, setError] = useState<string | null>(null);
 
+  function setUrl(nextTab: Tab, nextPage: number) {
+    const params = new URLSearchParams();
+    params.set("tab", nextTab);
+    params.set("page", String(nextPage));
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
   useEffect(() => {
-    setPage(1);
-  }, [tab]);
+    fetch("/api/standings")
+      .then((res) => res.json())
+      .then(setStandings)
+      .catch(() => {}); // статистика опциональна — расписание не должно падать из-за неё
+  }, []);
 
   useEffect(() => {
     setData(null);
     setError(null);
-    const params = new URLSearchParams({ status: tab, page: String(page), pageSize: "20" });
+    const params = new URLSearchParams({ scope: tab, page: String(page) });
     fetch(`/api/games?${params.toString()}`)
       .then((res) => {
         if (!res.ok) throw new Error("Не удалось загрузить расписание");
@@ -58,6 +83,8 @@ export default function Home() {
     return Array.from(map.entries());
   }, [games]);
 
+  const rangeLabel = data ? formatRange(new Date(data.rangeStart), new Date(data.rangeEnd)) : null;
+
   return (
     <main style={styles.page}>
       <header style={styles.topbar}>
@@ -66,7 +93,7 @@ export default function Home() {
           {TABS.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => setUrl(t.key, 1)}
               style={{ ...styles.tabButton, ...(tab === t.key ? styles.tabButtonActive : {}) }}
             >
               {t.label}
@@ -91,7 +118,7 @@ export default function Home() {
       {!error && data !== null && data.games.length === 0 && (
         <div style={styles.emptyState}>
           <p style={styles.emptyTitle}>Матчей не найдено</p>
-          <p style={styles.emptyBody}>Для этой вкладки пока нет данных.</p>
+          <p style={styles.emptyBody}>За этот период ({rangeLabel}) матчей нет — попробуйте соседний период.</p>
         </div>
       )}
 
@@ -101,30 +128,20 @@ export default function Home() {
             <div key={date}>
               <div style={styles.dayHeading}>{formatDayHeading(date)}</div>
               {dayGames.map((g) => (
-                <GameRow key={g.id} game={g} />
+                <GameRow key={g.id} game={g} standings={standings} teamLinksEnabled={false} />
               ))}
             </div>
           ))}
         </section>
       )}
 
-      {data && data.totalPages > 1 && (
+      {data && (
         <div style={styles.pagination}>
-          <button
-            style={styles.pageButton}
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
+          <button style={styles.pageButton} disabled={page <= 1} onClick={() => setUrl(tab, page - 1)}>
             Назад
           </button>
-          <span style={styles.pageLabel}>
-            Стр. {data.page} из {data.totalPages}
-          </span>
-          <button
-            style={styles.pageButton}
-            disabled={page >= data.totalPages}
-            onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-          >
+          <span style={styles.pageLabel}>{rangeLabel}</span>
+          <button style={styles.pageButton} onClick={() => setUrl(tab, page + 1)}>
             Вперёд
           </button>
         </div>
@@ -225,5 +242,6 @@ const styles: Record<string, CSSProperties> = {
   pageLabel: {
     color: colors.muted,
     fontSize: "0.9rem",
+    fontFamily: "var(--font-display)",
   },
 };
