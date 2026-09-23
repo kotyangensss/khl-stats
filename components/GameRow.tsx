@@ -4,18 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { TeamLogo } from "./TeamLogo";
-import type { Game, TeamStats } from "@/lib/types";
-import { overtimeLabel, formatShortDate } from "@/lib/format";
+import { TeamStatsLine } from "./TeamStatsLine";
+import type { Game, StandingsTeam } from "@/lib/types";
+import { overtimeLabel, formatShortDate, liveStatusLabel } from "@/lib/format";
 import { colors } from "@/lib/theme";
-
-function StatsLine({ stats }: { stats?: TeamStats }) {
-  if (!stats) return null;
-  return (
-    <span style={{ fontFamily: "var(--font-body)", fontSize: "0.72rem", color: colors.muted }}>
-      {stats.wins}-{stats.losses}-{stats.otLosses} · {stats.rank}-е место
-    </span>
-  );
-}
 
 /** Ссылка на команду, если href задан; иначе обычный некликабельный блок
  * (на главной клик по команде должен вести только на страницу матча). */
@@ -42,14 +34,18 @@ export function GameRow({
   game,
   showDate = false,
   standings,
-  highlightWinner = false,
+  highlightTeamId,
+  compactStats = false,
+  showStats = true,
   teamLinksEnabled = true,
 }: {
   game: Game;
   showDate?: boolean;
-  standings?: Record<number, TeamStats>;
-  /** Мягкая зелёная градиентная подложка у победившей команды (страница команды) */
-  highlightWinner?: boolean;
+  standings?: Record<number, StandingsTeam>;
+  /** Команда, относительно которой подсвечивается результат строки */
+  highlightTeamId?: number;
+  compactStats?: boolean;
+  showStats?: boolean;
   /** На главной клик по команде не должен вести на страницу команды — только на матч */
   teamLinksEnabled?: boolean;
 }) {
@@ -58,17 +54,22 @@ export function GameRow({
   const decided = game.status === "FINISHED";
   const aWon = decided && (game.homeScore ?? 0) > (game.visitorScore ?? 0);
   const bWon = decided && (game.visitorScore ?? 0) > (game.homeScore ?? 0);
+  const hasWinner = aWon || bWon;
+  const highlightedTeamWon = highlightTeamId === game.teamA.id ? aWon : bWon;
+  const rowAura = highlightTeamId && decided && hasWinner
+    ? highlightedTeamWon
+      ? `linear-gradient(90deg, ${colors.win}28, transparent 72%)`
+      : `linear-gradient(90deg, ${colors.loss}28, transparent 72%)`
+    : undefined;
 
   // Цвет текста больше не несёт победу/поражение — только жирность.
-  // Победу подсвечиваем градиентом фона, и только там, где явно попросили
-  // (highlightWinner) — на главной странице подсветки нет вообще.
+  // На странице команды результат подсвечивается фоном всей строки.
   const nameStyle = (won: boolean): CSSProperties => ({
     fontWeight: won ? 700 : decided ? 400 : 500,
     color: colors.text,
   });
 
-  const teamLinkStyle = (won: boolean, side: "right" | "left"): CSSProperties => {
-    const showGlow = highlightWinner && won;
+  const teamLinkStyle = (side: "right" | "left"): CSSProperties => {
     return {
       display: "flex",
       alignItems: "center",
@@ -78,13 +79,8 @@ export function GameRow({
       textDecoration: "none",
       justifyContent: side === "right" ? "flex-end" : "flex-start",
       textAlign: side,
-      padding: showGlow ? "0.5rem 0.9rem" : "0.5rem 0",
+      padding: "0.5rem 0",
       borderRadius: "10px",
-      background: showGlow
-        ? side === "right"
-          ? `linear-gradient(to left, ${colors.win}30, transparent)`
-          : `linear-gradient(to right, ${colors.win}30, transparent)`
-        : undefined,
     };
   };
 
@@ -101,7 +97,7 @@ export function GameRow({
       onKeyDown={(e) => {
         if (e.key === "Enter") router.push(`/game/${game.id}`);
       }}
-      style={{ cursor: "pointer", borderBottom: `1px solid ${colors.borderSoft}`, padding: "0.9rem 0" }}
+      style={{ cursor: "pointer", borderBottom: `1px solid ${colors.borderSoft}`, padding: "0.9rem 0", background: rowAura }}
     >
       {showDate && (
         <div
@@ -119,10 +115,10 @@ export function GameRow({
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "1.25rem" }}>
-        <TeamBlock href={teamLinksEnabled ? `/team/${game.teamA.id}` : null} style={teamLinkStyle(aWon, "right")}>
+        <TeamBlock href={teamLinksEnabled ? `/team/${game.teamA.id}` : null} style={teamLinkStyle("right")}>
           <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.15rem", minWidth: 0 }}>
             <span style={nameStyle(aWon)}>{game.teamA.name}</span>
-            <StatsLine stats={standings?.[game.teamA.id]} />
+            {showStats && <TeamStatsLine stats={standings?.[game.teamA.id]} compact={compactStats} showRank={compactStats && game.status !== "FINISHED"} />}
           </span>
           <TeamLogo team={game.teamA} size={56} />
         </TeamBlock>
@@ -146,6 +142,11 @@ export function GameRow({
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.4rem", color: colors.text }}>
                 {game.homeScore} : {game.visitorScore}
               </span>
+              {(game.liveStatus || game.liveClock) && (
+                <span style={{ fontFamily: "var(--font-body)", color: colors.muted, fontSize: "0.68rem" }}>
+                  {liveStatusLabel(game.liveStatus, game.livePeriod) ?? ""}{game.liveClock ? ` · ${game.liveClock}` : ""}
+                </span>
+              )}
             </>
           )}
           {game.status === "FINISHED" && (
@@ -156,11 +157,11 @@ export function GameRow({
           )}
         </span>
 
-        <TeamBlock href={teamLinksEnabled ? `/team/${game.teamB.id}` : null} style={teamLinkStyle(bWon, "left")}>
+        <TeamBlock href={teamLinksEnabled ? `/team/${game.teamB.id}` : null} style={teamLinkStyle("left")}>
           <TeamLogo team={game.teamB} size={56} />
           <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.15rem", minWidth: 0 }}>
             <span style={nameStyle(bWon)}>{game.teamB.name}</span>
-            <StatsLine stats={standings?.[game.teamB.id]} />
+            {showStats && <TeamStatsLine stats={standings?.[game.teamB.id]} compact={compactStats} showRank={compactStats && game.status !== "FINISHED"} />}
           </span>
         </TeamBlock>
       </div>

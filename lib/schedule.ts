@@ -21,9 +21,10 @@ export function upcomingWindow(page: number) {
   return { start, end };
 }
 
-/** "Прошедшие": окно назад от начала сегодняшнего дня (сегодня не входит) */
+/** "Прошедшие": окно назад от начала завтрашнего дня, включая завершённые сегодня */
 export function pastWindow(page: number) {
   const end = startOfToday();
+  end.setDate(end.getDate() + 1);
   end.setDate(end.getDate() - (page - 1) * DAYS_PER_PAGE);
   const start = new Date(end);
   start.setDate(start.getDate() - DAYS_PER_PAGE);

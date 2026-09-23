@@ -2,9 +2,10 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { computeStandings } from "@/lib/standings";
+import { getStandings } from "@/lib/standings";
 import { TeamLogo } from "@/components/TeamLogo";
 import { GameRow } from "@/components/GameRow";
+import { TeamStatsLine } from "@/components/TeamStatsLine";
 import type { Game } from "@/lib/types";
 import { colors } from "@/lib/theme";
 
@@ -24,8 +25,17 @@ const emptyText: CSSProperties = {
 
 // Prisma возвращает date как объект Date — приводим к строке, как ожидает
 // общий тип Game (и как приходит из /api/games на клиенте).
-function toGame(g: any): Game {
-  return { ...g, date: g.date.toISOString() };
+function toGame(
+  g: Omit<Game, "date" | "liveUpdatedAt"> & {
+    date: Date;
+    liveUpdatedAt?: Date | null;
+  }
+): Game {
+  return {
+    ...g,
+    date: g.date.toISOString(),
+    liveUpdatedAt: g.liveUpdatedAt?.toISOString() ?? null,
+  };
 }
 
 export default async function TeamPage({ params }: { params: Promise<{ id: string }> }) {
@@ -48,10 +58,10 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
       include: { teamA: true, teamB: true },
       take: 15,
     }),
-    computeStandings(),
+    getStandings(),
   ]);
 
-  const stats = standings[teamId];
+  const stats = standings.teamsById[teamId];
 
   return (
     <main style={{ minHeight: "100vh", background: colors.bg, color: colors.text, paddingBottom: "4rem" }}>
@@ -66,11 +76,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "clamp(1.75rem, 5vw, 2.75rem)", margin: 0 }}>
               {team.name}
             </h1>
-            {stats && (
-              <p style={{ fontFamily: "var(--font-display)", color: colors.muted, fontSize: "1rem", margin: "0.4rem 0 0" }}>
-                {stats.wins}-{stats.losses}-{stats.otLosses} · {stats.points} очков · {stats.rank}-е место
-              </p>
-            )}
+            <TeamStatsLine stats={stats} />
           </div>
         </div>
       </div>
@@ -81,7 +87,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             <div style={sectionHeading}>Прошедшие матчи</div>
             {past.length === 0 && <p style={emptyText}>Нет прошедших матчей.</p>}
             {past.map((g) => (
-              <GameRow key={g.id} game={toGame(g)} showDate standings={standings} />
+              <GameRow key={g.id} game={toGame(g)} showDate standings={standings.teamsById} highlightTeamId={teamId} />
             ))}
           </div>
 
@@ -89,7 +95,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             <div style={sectionHeading}>Предстоящие матчи</div>
             {upcoming.length === 0 && <p style={emptyText}>Нет предстоящих матчей.</p>}
             {upcoming.map((g) => (
-              <GameRow key={g.id} game={toGame(g)} showDate standings={standings} />
+              <GameRow key={g.id} game={toGame(g)} showDate standings={standings.teamsById} />
             ))}
           </div>
         </div>

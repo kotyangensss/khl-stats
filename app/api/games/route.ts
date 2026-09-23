@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
 
   const where: Record<string, unknown> = { date: { gte: start, lt: end } };
   if (scope === "past") where.status = "FINISHED";
+  if (scope === "upcoming") where.status = { not: "FINISHED" };
   if (teamId) where.OR = [{ teamAId: Number(teamId) }, { teamBId: Number(teamId) }];
 
   const games = await prisma.game.findMany({

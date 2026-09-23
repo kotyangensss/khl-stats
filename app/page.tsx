@@ -2,9 +2,10 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { GameRow } from "@/components/GameRow";
-import type { Game, TeamStats } from "@/lib/types";
+import type { Game, StandingsData } from "@/lib/types";
 import { dayKey, formatDayHeading } from "@/lib/format";
 import { formatRange } from "@/lib/schedule";
 import { colors } from "@/lib/theme";
@@ -41,7 +42,7 @@ function HomeContent() {
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
 
   const [data, setData] = useState<GamesResponse | null>(null);
-  const [standings, setStandings] = useState<Record<number, TeamStats>>({});
+  const [standings, setStandings] = useState<Record<number, StandingsData["teamsById"][number]>>({});
   const [error, setError] = useState<string | null>(null);
 
   function setUrl(nextTab: Tab, nextPage: number) {
@@ -54,26 +55,37 @@ function HomeContent() {
   useEffect(() => {
     fetch("/api/standings")
       .then((res) => res.json())
-      .then(setStandings)
+      .then((json: StandingsData) => setStandings(json.teamsById))
       .catch(() => {}); // статистика опциональна — расписание не должно падать из-за неё
   }, []);
 
   useEffect(() => {
-    setData(null);
-    setError(null);
     const params = new URLSearchParams({ scope: tab, page: String(page) });
-    fetch(`/api/games?${params.toString()}`)
+    let cancelled = false;
+    const loadGames = () => fetch(`/api/games?${params.toString()}`)
       .then((res) => {
         if (!res.ok) throw new Error("Не удалось загрузить расписание");
         return res.json();
       })
-      .then((json: GamesResponse) => setData(json))
-      .catch((e) => setError(e.message));
+      .then((json: GamesResponse) => {
+        if (!cancelled) {
+          setError(null);
+          setData(json);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      });
+    loadGames();
+    const timer = window.setInterval(loadGames, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [tab, page]);
 
-  const games = data?.games ?? [];
-
   const grouped = useMemo(() => {
+    const games = data?.games ?? [];
     const map = new Map<string, Game[]>();
     for (const g of games) {
       const key = dayKey(g.date);
@@ -81,7 +93,7 @@ function HomeContent() {
       map.get(key)!.push(g);
     }
     return Array.from(map.entries());
-  }, [games]);
+  }, [data?.games]);
 
   const rangeLabel = data ? formatRange(new Date(data.rangeStart), new Date(data.rangeEnd)) : null;
 
@@ -90,6 +102,7 @@ function HomeContent() {
       <header style={styles.topbar}>
         <span style={styles.wordmark}>Расписание КХЛ</span>
         <nav style={styles.tabs}>
+          <Link href="/standings" style={styles.standingsLink}>Таблица</Link>
           {TABS.map((t) => (
             <button
               key={t.key}
@@ -128,7 +141,7 @@ function HomeContent() {
             <div key={date}>
               <div style={styles.dayHeading}>{formatDayHeading(date)}</div>
               {dayGames.map((g) => (
-                <GameRow key={g.id} game={g} standings={standings} teamLinksEnabled={false} />
+                <GameRow key={g.id} game={g} standings={standings} compactStats={tab === "upcoming"} showStats={tab === "upcoming"} teamLinksEnabled={false} />
               ))}
             </div>
           ))}
@@ -178,6 +191,14 @@ const styles: Record<string, CSSProperties> = {
   tabs: {
     display: "flex",
     gap: "0.4rem",
+    alignItems: "center",
+  },
+  standingsLink: {
+    color: colors.accent,
+    fontFamily: "var(--font-display)",
+    fontSize: "0.95rem",
+    padding: "0.5rem 0.7rem",
+    textDecoration: "none",
   },
   tabButton: {
     fontFamily: "var(--font-display)",

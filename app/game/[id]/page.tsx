@@ -2,15 +2,26 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { computeStandings } from "@/lib/standings";
+import { getStandings } from "@/lib/standings";
 import { TeamLogo } from "@/components/TeamLogo";
 import { GameRow } from "@/components/GameRow";
 import type { Game } from "@/lib/types";
-import { overtimeLabel, formatDayHeading } from "@/lib/format";
+import { overtimeLabel, formatDayHeading, liveStatusLabel } from "@/lib/format";
 import { colors } from "@/lib/theme";
+import { LiveRefresh } from "@/components/LiveRefresh";
+import { TeamStatsLine } from "@/components/TeamStatsLine";
 
-function toGame(g: any): Game {
-  return { ...g, date: g.date.toISOString() };
+function toGame(
+  g: Omit<Game, "date" | "liveUpdatedAt"> & {
+    date: Date;
+    liveUpdatedAt?: Date | null;
+  }
+): Game {
+  return {
+    ...g,
+    date: g.date.toISOString(),
+    liveUpdatedAt: g.liveUpdatedAt?.toISOString() ?? null,
+  };
 }
 
 const sectionHeading: CSSProperties = {
@@ -33,7 +44,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   if (!game) notFound();
 
   const [standings, recentA, recentB] = await Promise.all([
-    computeStandings(),
+    getStandings(),
     prisma.game.findMany({
       where: {
         status: "FINISHED",
@@ -61,8 +72,18 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const aWon = decided && (game.homeScore ?? 0) > (game.visitorScore ?? 0);
   const bWon = decided && (game.visitorScore ?? 0) > (game.homeScore ?? 0);
   const periods = Array.isArray(game.periodScores) ? (game.periodScores as string[]) : [];
-  const statsA = standings[game.teamAId];
-  const statsB = standings[game.teamBId];
+  const events = Array.isArray(game.liveEvents)
+    ? (game.liveEvents as Array<{
+        period?: number;
+        time?: string;
+        team?: string;
+        scorer?: string;
+        assists?: string[];
+        score?: string;
+      }>)
+    : [];
+  const statsA = standings.teamsById[game.teamAId];
+  const statsB = standings.teamsById[game.teamBId];
 
   const teamNameStyle = (won: boolean): CSSProperties => ({
     fontFamily: "var(--font-display)",
@@ -71,14 +92,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     color: won ? colors.win : decided ? colors.loss : colors.text,
   });
 
-  const statsStyle: CSSProperties = {
-    fontFamily: "var(--font-display)",
-    color: colors.muted,
-    fontSize: "0.85rem",
-  };
-
   return (
     <main style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "clamp(1.25rem, 5vw, 3rem)" }}>
+      <LiveRefresh active={game.status !== "FINISHED"} />
       <Link href="/" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
         ← Расписание
       </Link>
@@ -87,7 +103,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         <div style={{ color: colors.accent, fontFamily: "var(--font-display)", fontSize: "0.9rem", fontWeight: 500 }}>
           {formatDayHeading(game.date.toISOString())}
           {game.timeFormat ? ` · ${game.timeFormat} МСК` : ""}
-          {game.arena ? ` · ${game.arena.city}` : ""}
+          {game.venue ? ` · ${game.venue}` : game.arena ? ` · ${game.arena.city}` : ""}
         </div>
 
         <div
@@ -106,11 +122,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           >
             <TeamLogo team={game.teamA} size={120} />
             <span style={teamNameStyle(aWon)}>{game.teamA.name}</span>
-            {statsA && (
-              <span style={statsStyle}>
-                {statsA.wins}-{statsA.losses}-{statsA.otLosses} · {statsA.rank}-е место
-              </span>
-            )}
+            <TeamStatsLine stats={statsA} />
           </Link>
 
           <div style={{ textAlign: "center", minWidth: "8rem" }}>
@@ -134,6 +146,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "clamp(3rem, 8vw, 5rem)", lineHeight: 1 }}>
                   {game.homeScore} : {game.visitorScore}
                 </div>
+                {(game.liveStatus || game.liveClock) && (
+                  <div style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+                    {liveStatusLabel(game.liveStatus, game.livePeriod) ?? ""}{game.liveClock ? ` · ${game.liveClock}` : ""}
+                  </div>
+                )}
               </>
             )}
             {game.status === "SCHEDULED" && (
@@ -149,11 +166,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           >
             <TeamLogo team={game.teamB} size={120} />
             <span style={teamNameStyle(bWon)}>{game.teamB.name}</span>
-            {statsB && (
-              <span style={statsStyle}>
-                {statsB.wins}-{statsB.losses}-{statsB.otLosses} · {statsB.rank}-е место
-              </span>
-            )}
+            <TeamStatsLine stats={statsB} />
           </Link>
         </div>
 
@@ -169,23 +182,47 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(1.5rem, 5vw, 3rem)", marginTop: "3.5rem", textAlign: "left" }}>
-        <div>
-          <div style={sectionHeading}>Последние матчи: {game.teamA.name}</div>
-          {recentA.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
-          {recentA.map((g) => (
-            <GameRow key={g.id} game={toGame(g)} showDate />
+      {(events.length > 0 || game.status === "FINISHED") && (
+        <section style={{ maxWidth: "42rem", margin: "3rem auto 0", textAlign: "left" }}>
+          <div style={sectionHeading}>Голы и авторы</div>
+          {events.length === 0 && (
+            <p style={{ color: colors.muted, fontFamily: "var(--font-body)", fontSize: "0.9rem" }}>
+              Данные об авторах голов пока не предоставлены источником.
+            </p>
+          )}
+          {events.map((event, index) => (
+            <div key={`${event.period}-${event.time}-${index}`} style={{ display: "grid", gridTemplateColumns: "4rem 1fr auto", gap: "0.75rem", alignItems: "baseline", padding: "0.7rem 0", borderBottom: `1px solid ${colors.borderSoft}`, fontFamily: "var(--font-body)", fontSize: "0.9rem" }}>
+              <span style={{ color: colors.muted }}>{event.time ?? "—"}</span>
+              <span>
+                <strong>{event.scorer ?? "Автор не указан"}</strong>
+                {event.team ? ` · ${event.team === "home" ? game.teamA.name : event.team === "away" ? game.teamB.name : event.team}` : ""}
+                {event.assists?.length ? ` · ассистенты: ${event.assists.join(", ")}` : ""}
+              </span>
+              <span style={{ color: colors.accent }}>{event.score ?? ""}</span>
+            </div>
           ))}
-        </div>
+        </section>
+      )}
 
-        <div>
-          <div style={sectionHeading}>Последние матчи: {game.teamB.name}</div>
-          {recentB.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
-          {recentB.map((g) => (
-            <GameRow key={g.id} game={toGame(g)} showDate />
-          ))}
+      {game.status !== "FINISHED" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(1.5rem, 5vw, 3rem)", marginTop: "3.5rem", textAlign: "left" }}>
+          <div>
+            <div style={sectionHeading}>Последние матчи: {game.teamA.name}</div>
+            {recentA.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
+            {recentA.map((g) => (
+              <GameRow key={g.id} game={toGame(g)} showDate />
+            ))}
+          </div>
+
+          <div>
+            <div style={sectionHeading}>Последние матчи: {game.teamB.name}</div>
+            {recentB.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
+            {recentB.map((g) => (
+              <GameRow key={g.id} game={toGame(g)} showDate />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }

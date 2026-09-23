@@ -12,7 +12,7 @@ const BASE_URL = "https://www.khl.ru";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
-interface Session {
+export interface Session {
   cookie: string;
   sessid: string;
 }
@@ -27,14 +27,14 @@ interface Session {
  * где именно передаётся sessid (обычно это глобальная JS-переменная или
  * значение скрытого input), и поправьте SESSID_PATTERN.
  */
-async function getSession(): Promise<Session> {
+export async function getSession(): Promise<Session> {
   // ВАЖНО: khl.ru перед отдачей реальной страницы ставит "антибот" куки
   // (spid/spsc) через 307-редирект на тот же адрес. Встроенный fetch при
   // автоматическом follow НЕ передаёт куки между хопами редиректа, из-за
   // чего получается бесконечный цикл 307 → 307 → ... Поэтому обрабатываем
   // редирект вручную и сами прокидываем куки на следующий запрос.
   let url = BASE_URL + "/";
-  let cookieJar: string[] = [];
+  const cookieJar: string[] = [];
   let html = "";
 
   for (let hop = 0; hop < 5; hop++) {
@@ -114,6 +114,83 @@ export interface KhlCalendarResponse {
   errors: unknown[];
 }
 
+export type LiveGameEvent = {
+  period: number;
+  time: string;
+  team: "home" | "away" | string;
+  scorer: string;
+  assists: string[];
+  score: string;
+};
+
+export type KhlGameHeader = {
+  id: number;
+  status?: string;
+  period?: number;
+  time?: string;
+  arena?: string;
+  score?: { home?: number | string; away?: number | string };
+  goals?: LiveGameEvent[];
+};
+
+type RawKhlGameHeader = KhlGameHeader & {
+  showstatus?: string;
+  game?: {
+    id: number;
+    arena?: string;
+    homeScore?: number;
+    visitorScore?: number;
+    scP?: string[];
+    score?: string;
+  };
+  proto?: {
+    goals?: Record<string, Array<{
+      per?: number;
+      pmg_time?: string;
+      teamAB?: "A" | "B" | string;
+      scoreA?: string;
+      scoreB?: string;
+      scorer?: { name?: string };
+      assist_1?: { name?: string };
+      assist_2?: { name?: string };
+    }>>;
+  };
+};
+
+type KhlGameHeaderResponse = RawKhlGameHeader | {
+  status: string;
+  data: RawKhlGameHeader | null;
+  errors?: unknown[];
+};
+
+function normalizeGameHeader(raw: RawKhlGameHeader): KhlGameHeader {
+  if (!raw.game) return raw;
+
+  const goals = Object.values(raw.proto?.goals ?? {})
+    .flat()
+    .map((goal) => ({
+      period: goal.per ?? 0,
+      time: goal.pmg_time ?? "",
+      team: goal.teamAB === "A" ? "home" : "away",
+      scorer: goal.scorer?.name ?? "",
+      assists: [goal.assist_1?.name, goal.assist_2?.name].filter(
+        (name): name is string => Boolean(name)
+      ),
+      score: `${goal.scoreA ?? ""}:${goal.scoreB ?? ""}`,
+    }));
+
+  return {
+    id: raw.game.id,
+    status: raw.showstatus,
+    arena: raw.game.arena,
+    score: {
+      home: raw.game.homeScore,
+      away: raw.game.visitorScore,
+    },
+    goals,
+  };
+}
+
 /**
  * Тянет календарь/результаты матчей с khl.ru.
  * dateFrom / dateTo в формате YYYY-MM-DD — при необходимости добавьте их
@@ -149,6 +226,47 @@ export async function fetchKhlCalendar(): Promise<KhlCalendarResponse> {
   }
 
   return json;
+}
+
+/** Загружает live-события конкретного матча через недокументированный endpoint. */
+export async function fetchKhlGameHeader(
+  gameId: number,
+  session: Session
+): Promise<KhlGameHeader> {
+  const body = new URLSearchParams({
+    page: "preview",
+    "values[tournament]": "1436",
+    "values[gameid]": String(gameId),
+    sessid: session.sessid,
+  });
+  const res = await fetch(`${BASE_URL}/rest/game/header/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, */*",
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "User-Agent": USER_AGENT,
+      "X-Requested-With": "XMLHttpRequest",
+      Origin: BASE_URL,
+      Referer: `${BASE_URL}/game/${gameId}/`,
+      Cookie: session.cookie,
+    },
+    body: body.toString(),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Запрос game/header вернул ошибку: ${res.status}`);
+  }
+
+  const json = (await res.json()) as KhlGameHeaderResponse;
+  if ("data" in json) {
+    if (json.data) return normalizeGameHeader(json.data);
+    throw new Error(`khl.ru не отдал live-данные для игры ${gameId}`);
+  }
+  if (!json || typeof json !== "object") {
+    throw new Error(`khl.ru вернул некорректный header для игры ${gameId}`);
+  }
+  return normalizeGameHeader(json);
 }
 
 /** Разворачивает GAMES (массив объектов по датам) в плоский список игр */
