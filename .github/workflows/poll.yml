@@ -1,0 +1,20 @@
+name: Sync KHL data
+
+on:
+  schedule:
+    # Полное расписание — раз в сутки, в 03:00 UTC
+    - cron: "0 3 * * *"
+    # Более частое обновление счёта — каждые 5 минут.
+    # GitHub Actions не гарантирует точность cron при высокой нагрузке на
+    # платформе — в реальности интервал может быть больше заявленных 5 минут.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {} # позволяет запускать вручную из вкладки Actions
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call sync endpoint
+        run: |
+          curl -sf -X POST "${{ secrets.SITE_URL }}/api/sync" \
+            -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"

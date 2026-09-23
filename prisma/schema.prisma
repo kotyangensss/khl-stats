@@ -1,0 +1,64 @@
+// Схема БД. После правки запустить: npx prisma generate && npx prisma db push
+//
+// Prisma 7: строка подключения сюда больше не пишется — она в prisma.config.ts
+// (для CLI) и передаётся через driver adapter в lib/db.ts (для runtime).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Team {
+  id       Int    @id // тот же id, что и в khl.ru (например 1, 25, 190...)
+  name     String
+  logoUrl  String?
+
+  gamesAsTeamA Game[] @relation("TeamA")
+  gamesAsTeamB Game[] @relation("TeamB")
+}
+
+model Arena {
+  id    Int    @id
+  city  String
+
+  games Game[]
+}
+
+enum GameStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+}
+
+model Game {
+  id             Int        @id // khl.ru id матча, например 901978
+  tnId           Int? // id турнира/сезона на khl.ru
+  date           DateTime // дата игры (только дата, без времени)
+  timeFormat     String? // время начала, как строка "13:00"
+  status         GameStatus @default(SCHEDULED)
+
+  teamAId        Int
+  teamBId        Int
+  arenaId        Int?
+
+  homeScore      Int?
+  visitorScore   Int?
+  periodScores   Json? // массив вида ["2:0","1:1","2:0"]
+  overtime       String? // поле "ots" из khl.ru — если была овертайм-пометка
+  winnerTeamId   Int?
+
+  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime   @default(now())
+
+  teamA          Team       @relation("TeamA", fields: [teamAId], references: [id])
+  teamB          Team       @relation("TeamB", fields: [teamBId], references: [id])
+  arena          Arena?     @relation(fields: [arenaId], references: [id])
+
+  @@index([date])
+  @@index([status])
+  @@index([teamAId])
+  @@index([teamBId])
+}

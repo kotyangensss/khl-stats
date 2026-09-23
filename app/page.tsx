@@ -1,65 +1,229 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
+import { GameRow } from "@/components/GameRow";
+import type { Game } from "@/lib/types";
+import { dayKey, formatDayHeading } from "@/lib/format";
+import { colors } from "@/lib/theme";
+
+type GamesResponse = {
+  games: Game[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+type Tab = "SCHEDULED" | "LIVE" | "FINISHED";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "SCHEDULED", label: "Предстоящие" },
+  { key: "LIVE", label: "Идут сейчас" },
+  { key: "FINISHED", label: "Прошедшие" },
+];
 
 export default function Home() {
+  const [tab, setTab] = useState<Tab>("SCHEDULED");
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<GamesResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tab]);
+
+  useEffect(() => {
+    setData(null);
+    setError(null);
+    const params = new URLSearchParams({ status: tab, page: String(page), pageSize: "20" });
+    fetch(`/api/games?${params.toString()}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Не удалось загрузить расписание");
+        return res.json();
+      })
+      .then((json: GamesResponse) => setData(json))
+      .catch((e) => setError(e.message));
+  }, [tab, page]);
+
+  const games = data?.games ?? [];
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, Game[]>();
+    for (const g of games) {
+      const key = dayKey(g.date);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(g);
+    }
+    return Array.from(map.entries());
+  }, [games]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main style={styles.page}>
+      <header style={styles.topbar}>
+        <span style={styles.wordmark}>Расписание КХЛ</span>
+        <nav style={styles.tabs}>
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{ ...styles.tabButton, ...(tab === t.key ? styles.tabButtonActive : {}) }}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      {error && (
+        <div style={styles.emptyState}>
+          <p style={styles.emptyTitle}>Не удалось загрузить</p>
+          <p style={styles.emptyBody}>{error}. Обновите страницу через минуту.</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      )}
+
+      {!error && data === null && (
+        <div style={styles.emptyState}>
+          <p style={styles.emptyBody}>Загружаем…</p>
         </div>
-      </main>
-    </div>
+      )}
+
+      {!error && data !== null && data.games.length === 0 && (
+        <div style={styles.emptyState}>
+          <p style={styles.emptyTitle}>Матчей не найдено</p>
+          <p style={styles.emptyBody}>Для этой вкладки пока нет данных.</p>
+        </div>
+      )}
+
+      {grouped.length > 0 && (
+        <section style={styles.list}>
+          {grouped.map(([date, dayGames]) => (
+            <div key={date}>
+              <div style={styles.dayHeading}>{formatDayHeading(date)}</div>
+              {dayGames.map((g) => (
+                <GameRow key={g.id} game={g} />
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <div style={styles.pagination}>
+          <button
+            style={styles.pageButton}
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Назад
+          </button>
+          <span style={styles.pageLabel}>
+            Стр. {data.page} из {data.totalPages}
+          </span>
+          <button
+            style={styles.pageButton}
+            disabled={page >= data.totalPages}
+            onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+          >
+            Вперёд
+          </button>
+        </div>
+      )}
+    </main>
   );
 }
+
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: colors.bg,
+    color: colors.text,
+    fontFamily: "var(--font-body)",
+    fontSize: "1.05rem",
+    paddingBottom: "4rem",
+  },
+  topbar: {
+    padding: "1.5rem clamp(1.25rem, 5vw, 3rem) 1rem",
+    borderBottom: `1px solid ${colors.border}`,
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "1rem",
+  },
+  wordmark: {
+    fontFamily: "var(--font-display)",
+    fontWeight: 600,
+    fontSize: "1.1rem",
+    letterSpacing: "0.04em",
+    color: colors.muted,
+  },
+  tabs: {
+    display: "flex",
+    gap: "0.4rem",
+  },
+  tabButton: {
+    fontFamily: "var(--font-display)",
+    fontSize: "0.95rem",
+    fontWeight: 500,
+    padding: "0.5rem 1rem",
+    borderRadius: "999px",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.border,
+    background: "transparent",
+    color: colors.muted,
+    cursor: "pointer",
+  },
+  tabButtonActive: {
+    borderColor: colors.accent,
+    color: colors.bg,
+    background: colors.accent,
+  },
+  emptyState: {
+    padding: "3rem clamp(1.25rem, 5vw, 3rem)",
+  },
+  emptyTitle: {
+    fontFamily: "var(--font-display)",
+    fontSize: "1.35rem",
+    fontWeight: 600,
+    margin: "0 0 0.4rem",
+  },
+  emptyBody: {
+    color: colors.muted,
+    margin: 0,
+    fontSize: "1.05rem",
+  },
+  list: {
+    padding: "1rem clamp(1.25rem, 5vw, 3rem) 0",
+  },
+  dayHeading: {
+    fontFamily: "var(--font-display)",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    letterSpacing: "0.03em",
+    color: colors.muted,
+    padding: "1.75rem 0 0.6rem",
+  },
+  pagination: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1rem",
+    padding: "2rem clamp(1.25rem, 5vw, 3rem) 0",
+  },
+  pageButton: {
+    fontFamily: "var(--font-display)",
+    fontSize: "0.9rem",
+    padding: "0.55rem 1.2rem",
+    borderRadius: "6px",
+    border: `1px solid ${colors.border}`,
+    background: "transparent",
+    color: colors.text,
+    cursor: "pointer",
+  },
+  pageLabel: {
+    color: colors.muted,
+    fontSize: "0.9rem",
+  },
+};
