@@ -11,10 +11,20 @@ on:
   workflow_dispatch: {} # позволяет запускать вручную из вкладки Actions
 
 jobs:
-  sync:
+  full-sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
     steps:
-      - name: Call sync endpoint
+      - name: Refresh calendar
         run: |
           curl -sf -X POST "${{ secrets.SITE_URL }}/api/sync" \
+            -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
+
+  live-sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh live matches
+        run: |
+          curl -sf -X POST "${{ secrets.SITE_URL }}/api/live-sync" \
             -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
