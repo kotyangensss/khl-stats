@@ -53,6 +53,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       homeScore: true,
       visitorScore: true,
       overtime: true,
+      periodScores: true,
       venue: true,
       liveStatus: true,
       livePeriod: true,
