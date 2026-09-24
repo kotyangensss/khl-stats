@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
-import { getStandings } from "@/lib/standings";
+import { getStandingsSafe } from "@/lib/standings";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export async function GET() {
-  return NextResponse.json(await getStandings());
+  const standings = await getStandingsSafe();
+  return NextResponse.json(standings, {
+    headers: {
+      "Cache-Control": "s-maxage=60, stale-while-revalidate=300",
+    },
+  });
 }

@@ -20,6 +20,28 @@ model Team {
   gamesAsTeamB Game[] @relation("TeamB")
 }
 
+model StandingsRow {
+  teamId          Int      @id
+  name            String
+  logoUrl         String?
+  conference      String
+  division        String
+  rank            Int
+  gamesPlayed     Int
+  wins            Int
+  otWins          Int
+  shootoutWins   Int
+  shootoutLosses Int
+  otLosses        Int
+  losses          Int
+  goalsFor        Int
+  goalsAgainst    Int
+  goalDiff        Int
+  points          Int
+  playoff         Boolean
+  updatedAt       DateTime @updatedAt
+}
+
 model Arena {
   id    Int    @id
   city  String
@@ -63,8 +85,8 @@ model Game {
   teamB          Team       @relation("TeamB", fields: [teamBId], references: [id])
   arena          Arena?     @relation(fields: [arenaId], references: [id])
 
-  @@index([date])
+  @@index([date, status])
   @@index([status])
-  @@index([teamAId])
-  @@index([teamBId])
+  @@index([teamAId, status])
+  @@index([teamBId, status])
 }

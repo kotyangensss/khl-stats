@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { upcomingWindow, pastWindow } from "@/lib/schedule";
+import { upcomingWindow, pastWindow, sortGamesByDateAndTime } from "@/lib/schedule";
+
+export const revalidate = 60;
 
 // /api/games?scope=upcoming&page=1  — сегодняшние (любой статус) + будущие,
 //   окном по DAYS_PER_PAGE дней вперёд от начала сегодняшнего дня
@@ -20,17 +22,42 @@ export async function GET(req: NextRequest) {
   if (scope === "upcoming") where.status = { not: "FINISHED" };
   if (teamId) where.OR = [{ teamAId: Number(teamId) }, { teamBId: Number(teamId) }];
 
-  const games = await prisma.game.findMany({
-    where,
-    orderBy: { date: scope === "past" ? "desc" : "asc" },
-    include: { teamA: true, teamB: true },
-  });
+  const games = sortGamesByDateAndTime(
+    await prisma.game.findMany({
+      where,
+      orderBy: { date: scope === "past" ? "desc" : "asc" },
+      select: {
+        id: true,
+        date: true,
+        timeFormat: true,
+        status: true,
+        homeScore: true,
+        visitorScore: true,
+        overtime: true,
+        venue: true,
+        teamA: { select: { id: true, name: true, logoUrl: true } },
+        teamB: { select: { id: true, name: true, logoUrl: true } },
+        liveStatus: true,
+        livePeriod: true,
+        liveClock: true,
+        liveUpdatedAt: true,
+      },
+    }),
+    scope === "past" ? "desc" : "asc"
+  );
 
-  return NextResponse.json({
-    games,
-    scope,
-    page,
-    rangeStart: start.toISOString(),
-    rangeEnd: end.toISOString(),
-  });
+  return NextResponse.json(
+    {
+      games,
+      scope,
+      page,
+      rangeStart: start.toISOString(),
+      rangeEnd: end.toISOString(),
+    },
+    {
+      headers: {
+        "Cache-Control": "s-maxage=60, stale-while-revalidate=300",
+      },
+    }
+  );
 }

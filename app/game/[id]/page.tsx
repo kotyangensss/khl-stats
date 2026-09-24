@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getStandings } from "@/lib/standings";
+import { getStandingsSafe } from "@/lib/standings";
 import { TeamLogo } from "@/components/TeamLogo";
 import { GameRow } from "@/components/GameRow";
 import type { Game } from "@/lib/types";
@@ -10,6 +10,13 @@ import { overtimeLabel, formatDayHeading, liveStatusLabel } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { TeamStatsLine } from "@/components/TeamStatsLine";
+
+export const revalidate = 30;
+
+export async function generateStaticParams() {
+  const games = await prisma.game.findMany({ select: { id: true } });
+  return games.map((game) => ({ id: String(game.id) }));
+}
 
 function toGame(
   g: Omit<Game, "date" | "liveUpdatedAt"> & {
@@ -38,13 +45,32 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
   const game = await prisma.game.findUnique({
     where: { id: Number(id) },
-    include: { teamA: true, teamB: true, arena: true },
+    select: {
+      id: true,
+      date: true,
+      timeFormat: true,
+      status: true,
+      homeScore: true,
+      visitorScore: true,
+      overtime: true,
+      venue: true,
+      liveStatus: true,
+      livePeriod: true,
+      liveClock: true,
+      liveEvents: true,
+      liveUpdatedAt: true,
+      teamA: { select: { id: true, name: true, logoUrl: true } },
+      teamB: { select: { id: true, name: true, logoUrl: true } },
+      arena: { select: { city: true } },
+      teamAId: true,
+      teamBId: true,
+    },
   });
 
   if (!game) notFound();
 
   const [standings, recentA, recentB] = await Promise.all([
-    getStandings(),
+    getStandingsSafe(),
     prisma.game.findMany({
       where: {
         status: "FINISHED",
@@ -52,7 +78,22 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         OR: [{ teamAId: game.teamAId }, { teamBId: game.teamAId }],
       },
       orderBy: { date: "desc" },
-      include: { teamA: true, teamB: true },
+      select: {
+        id: true,
+        date: true,
+        timeFormat: true,
+        status: true,
+        homeScore: true,
+        visitorScore: true,
+        overtime: true,
+        venue: true,
+        teamA: { select: { id: true, name: true, logoUrl: true } },
+        teamB: { select: { id: true, name: true, logoUrl: true } },
+        liveStatus: true,
+        livePeriod: true,
+        liveClock: true,
+        liveUpdatedAt: true,
+      },
       take: 5,
     }),
     prisma.game.findMany({
@@ -62,7 +103,22 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         OR: [{ teamAId: game.teamBId }, { teamBId: game.teamBId }],
       },
       orderBy: { date: "desc" },
-      include: { teamA: true, teamB: true },
+      select: {
+        id: true,
+        date: true,
+        timeFormat: true,
+        status: true,
+        homeScore: true,
+        visitorScore: true,
+        overtime: true,
+        venue: true,
+        teamA: { select: { id: true, name: true, logoUrl: true } },
+        teamB: { select: { id: true, name: true, logoUrl: true } },
+        liveStatus: true,
+        livePeriod: true,
+        liveClock: true,
+        liveUpdatedAt: true,
+      },
       take: 5,
     }),
   ]);

@@ -1,16 +1,13 @@
 import { prisma } from "./db";
 import {
-  fetchKhlCalendar,
-  fetchKhlGameHeader,
   flattenGames,
-  getSession,
   mapGameStatus,
 } from "./khl-client";
-import type { KhlGameHeader } from "./khl-client";
-import { getStandings } from "./standings";
+import type { KhlCalendarResponse, KhlGameHeader } from "./khl-client";
+import { saveStandingsToDb } from "./standings";
+import type { StandingsData } from "./types";
 
-export async function syncKhlData() {
-  const calendar = await fetchKhlCalendar();
+export async function syncKhlData(calendar: KhlCalendarResponse, standingsData: StandingsData) {
   const { TEAMS, ARENAS } = calendar.data;
 
   // Команды и арены — сначала, чтобы игры могли на них ссылаться (foreign keys)
@@ -36,46 +33,66 @@ export async function syncKhlData() {
   ]);
 
   const games = flattenGames(calendar.data.GAMES);
+  const existingIds = new Set(
+    (
+      await prisma.game.findMany({
+        where: { id: { in: games.map((game) => game.id) } },
+        select: { id: true },
+      })
+    ).map((game) => game.id)
+  );
 
   let created = 0;
   let updated = 0;
 
-  for (const game of games) {
-    const existing = await prisma.game.findUnique({ where: { id: game.id } });
+  await Promise.all(
+    games.map(async (game) => {
+      const existed = existingIds.has(game.id);
 
-    await prisma.game.upsert({
-      where: { id: game.id },
-      create: {
-        id: game.id,
-        tnId: game.tnId,
-        date: new Date(game.date),
-        timeFormat: game.time_format,
-        status: mapGameStatus(game),
-        teamAId: game.teama,
-        teamBId: game.teamb,
-        arenaId: game.arenaid || null,
-        homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
-        visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
-        periodScores: game.scP ?? undefined,
-        overtime: game.ots || null,
-        winnerTeamId: game.win || null,
-        venue: null,
-      },
-      update: {
-        status: mapGameStatus(game),
-        homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
-        visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
-        periodScores: game.scP ?? undefined,
-        overtime: game.ots || null,
-        winnerTeamId: game.win || null,
-      },
-    });
+      await prisma.game.upsert({
+        where: { id: game.id },
+        create: {
+          id: game.id,
+          tnId: game.tnId,
+          date: new Date(game.date),
+          timeFormat: game.time_format,
+          status: mapGameStatus(game),
+          teamAId: game.teama,
+          teamBId: game.teamb,
+          arenaId: game.arenaid || null,
+          homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
+          visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
+          periodScores: game.scP ?? undefined,
+          overtime: game.ots || null,
+          winnerTeamId: game.win || null,
+          venue: null,
+        },
+        update: {
+          status: mapGameStatus(game),
+          homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
+          visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
+          periodScores: game.scP ?? undefined,
+          overtime: game.ots || null,
+          winnerTeamId: game.win || null,
+        },
+      });
 
-    if (existing) updated++;
-    else created++;
+      if (existed) updated++;
+      else created++;
+    })
+  );
+
+  let standingsSummary: { teams: number; error?: string };
+  try {
+    standingsSummary = { teams: await saveStandingsToDb(standingsData) };
+  } catch (error) {
+    console.error("Standings database save failed:", error);
+    standingsSummary = {
+      teams: 0,
+      error: error instanceof Error ? error.message : "unknown error",
+    };
   }
-
-  return { teams: Object.keys(TEAMS).length, games: games.length, created, updated };
+  return { teams: Object.keys(TEAMS).length, games: games.length, created, updated, standings: standingsSummary };
 }
 
 function todayInMoscow(): { start: Date; end: Date } {
@@ -97,7 +114,7 @@ function headerStatus(header: KhlGameHeader): "LIVE" | "FINISHED" | null {
   return null;
 }
 
-export async function syncLiveGames() {
+export async function syncLiveGames(fetchHeader: (gameId: number) => Promise<KhlGameHeader>) {
   const { start, end } = todayInMoscow();
   const dayGames = await prisma.game.findMany({
     where: { date: { gte: start, lt: end }, status: { not: "FINISHED" } },
@@ -110,11 +127,10 @@ export async function syncLiveGames() {
   });
   if (games.length === 0) return { checked: 0, updated: 0, finished: 0, failed: 0, standingsRefreshed: false };
 
-  const session = await getSession();
   const headers = await Promise.allSettled(
     games.map(async (game) => ({
       game,
-      header: await fetchKhlGameHeader(game.id, session),
+      header: await fetchHeader(game.id),
     }))
   );
 
@@ -158,7 +174,7 @@ export async function syncLiveGames() {
     });
     if (remaining === 0) {
       try {
-        await getStandings(true);
+        // Standings are refreshed by the main sync route after it fetches them.
         standingsRefreshed = true;
       } catch (error) {
         console.error("Standings refresh after game day failed:", error);
