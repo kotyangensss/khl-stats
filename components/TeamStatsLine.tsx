@@ -7,7 +7,7 @@ export function TeamStatsLine({ stats, compact = false, showRank = false }: { st
   return (
     <span style={{ color: colors.muted, display: "flex", flexDirection: "column", fontFamily: "var(--font-body)", fontSize: "0.72rem", gap: "0.15rem" }}>
       {(!compact || showRank) && <span>{showRank ? `#${stats.rank}` : `#${stats.rank} · ${stats.points} очков`}</span>}
-      <span>{compact ? `${stats.wins}-${stats.losses}-${stats.otLosses + stats.shootoutLosses}` : `GP ${stats.gamesPlayed} · W ${stats.wins} · OTW ${stats.otWins} · SOW ${stats.shootoutWins} · SOL ${stats.shootoutLosses} · OTL ${stats.otLosses} · L ${stats.losses}`}</span>
+      <span>{compact ? `${stats.wins + stats.otWins + stats.shootoutWins}-${stats.losses}-${stats.otLosses + stats.shootoutLosses}` : `GP ${stats.gamesPlayed} · W ${stats.wins} · OTW ${stats.otWins} · SOW ${stats.shootoutWins} · SOL ${stats.shootoutLosses} · OTL ${stats.otLosses} · L ${stats.losses}`}</span>
     </span>
   );
 }

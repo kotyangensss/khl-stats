@@ -1,4 +1,4 @@
-name: Sync KHL data
+name: Live Sync KHL matches data
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
     # Старт первого live-окна: 13:00 MSK = 10:00 UTC (держит цикл 5 часов, до 18:00 MSK)
     - cron: "0 10 * * *"
     # Старт второго live-окна: 18:00 MSK = 15:00 UTC (держит цикл 5 часов, до 23:00 MSK)
-    - cron: "30 14 * * *"
+    - cron: "0 15 * * *"
   workflow_dispatch:
     inputs:
       site_url:
@@ -41,8 +41,9 @@ jobs:
           i=0
           while [ "$(date +%s)" -lt "$end" ]; do
             i=$((i+1))
-            if curl -sf -X POST "$url/api/live-sync" \
-              -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"; then
+            if curl -s -o /dev/null -w "status=%{http_code} redirected_to=%{redirect_url}\n" \
+              -X POST "$url/api/live-sync" \
+              -H "Authorization: Bearer $SYNC_SECRET"; then
               [ $(( i % 12 )) -eq 0 ] && echo "[$(date '+%H:%M:%S')] sync OK (iter #$i)"
             else
               echo "[$(date '+%H:%M:%S')] sync FAILED (iter #$i), will retry"
