@@ -2,12 +2,12 @@ name: Live Sync KHL matches data
 
 on:
   schedule:
-    # Полный дневной sync — раз в сутки, в 03:00 UTC
-    - cron: "0 3 * * *"
-    # Старт первого live-окна: 13:00 MSK = 10:00 UTC (держит цикл 5 часов, до 18:00 MSK)
-    - cron: "0 10 * * *"
-    # Старт второго live-окна: 18:00 MSK = 15:00 UTC (держит цикл 5 часов, до 23:00 MSK)
-    - cron: "0 15 * * *"
+    # Полный дневной sync — раз в сутки, в 00:00 UTC
+    - cron: "0 0 * * *"
+    # Старт первого live-окна: 10:00 MSK = 07:00 UTC (держит цикл 7 часов, до 17:00 MSK)
+    - cron: "0 7 * * *"
+    # Старт второго live-окна: 18:00 MSK = 14:00 UTC (держит цикл 7 часов, до 24:00 MSK)
+    - cron: "0 14 * * *"
   workflow_dispatch:
     inputs:
       site_url:
@@ -20,28 +20,14 @@ on:
         required: false
 
 jobs:
-  full-sync:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: full-sync
-      cancel-in-progress: false
-    steps:
-      - name: Refresh calendar
-        run: |
-          url="${{ secrets.SITE_URL }}"
-          url="${url%/}"
-          curl -sfL -X POST "$url/api/sync" \
-            -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
-
   live-sync:
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event.schedule == '0 10 * * *' ||
-      github.event.schedule == '0 15 * * *'
+      github.event.schedule == '0 7 * * *' ||
+      github.event.schedule == '0 14 * * *'
     runs-on: ubuntu-latest
-    # чуть больше 5 часов на запас
-    timeout-minutes: 310
+    # чуть больше 7 часов на запас
+    timeout-minutes: 450
     concurrency:
       group: live-sync
       cancel-in-progress: true
