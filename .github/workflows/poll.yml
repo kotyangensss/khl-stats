@@ -2,26 +2,30 @@ name: Sync KHL data
 
 on:
   schedule:
-    # Полное расписание — раз в сутки, в 03:00 UTC
+    # Полный дневной sync — раз в сутки, в 03:00 UTC
     - cron: "0 3 * * *"
-    # Просто «спусковой крючок» для live-поллера: реальная частота
-    # поллинга (10 сек) задаётся внутри джобы ниже.
-    - cron: "*/5 * * * *"
+    # Старт первого live-окна: 13:00 MSK = 10:00 UTC (держит цикл 5 часов, до 18:00 MSK)
+    - cron: "0 10 * * *"
+    # Старт второго live-окна: 17:00 MSK = 15:00 UTC (держит цикл 5 часов, до 23:00 MSK)
+    - cron: "0 15 * * *"
   workflow_dispatch:
     inputs:
       site_url:
         description: 'Base URL (для теста на дев-окружении; пусто = secrets.SITE_URL)'
         default: ''
         required: false
-
-concurrency:
-  group: live-sync
-  cancel-in-progress: true
+      poll_minutes:
+        description: 'Сколько минут держать live-поллер (для ручного запуска)'
+        default: '300'
+        required: false
 
 jobs:
   full-sync:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
+    concurrency:
+      group: full-sync
+      cancel-in-progress: false
     steps:
       - name: Refresh calendar
         run: |
@@ -29,28 +33,35 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
 
   live-sync:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *'
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.schedule == '0 10 * * *' ||
+      github.event.schedule == '0 15 * * *'
     runs-on: ubuntu-latest
-    timeout-minutes: 21
+    # чуть больше 5 часов на запас
+    timeout-minutes: 310
+    concurrency:
+      group: live-sync
+      cancel-in-progress: true
     steps:
-      - name: Poll live-sync every 10s for 20 minutes
+      - name: Poll live-sync every 5s for the game window
         run: |
           url="${{ inputs.site_url || secrets.SITE_URL }}"
-          echo "[$(date '+%H:%M:%S')] live-sync poller started, target: $url"
-          end=$(( $(date +%s) + 20 * 60 ))
+          minutes="${{ inputs.poll_minutes || 300 }}"
+          echo "[$(date '+%H:%M:%S')] live-sync poller started, target: $url, window: ${minutes}m"
+          end=$(( $(date +%s) + minutes * 60 ))
           i=0
           while [ "$(date +%s)" -lt "$end" ]; do
             i=$((i+1))
-            echo "[$(date '+%H:%M:%S')] iteration #$i"
             if curl -sf -X POST "$url/api/live-sync" \
-                 -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"; then
-              echo "[$(date '+%H:%M:%S')] sync OK"
+              -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"; then
+              [ $(( i % 12 )) -eq 0 ] && echo "[$(date '+%H:%M:%S')] sync OK (iter #$i)"
             else
-              echo "[$(date '+%H:%M:%S')] sync FAILED, will retry in 10s"
+              echo "[$(date '+%H:%M:%S')] sync FAILED (iter #$i), will retry"
             fi
             now=$(date +%s)
             rem=$(( end - now ))
             [ "$rem" -le 0 ] && break
-            sleep $(( rem < 10 ? rem : 10 ))
+            sleep $(( rem < 5 ? rem : 5 ))
           done
           echo "[$(date '+%H:%M:%S')] poll window finished after $i iterations"
