@@ -20,6 +20,20 @@ on:
         required: false
 
 jobs:
+  full-sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: full-sync
+      cancel-in-progress: false
+    steps:
+      - name: Refresh calendar
+        run: |
+          url="${{ secrets.SITE_URL }}"
+          url="${url%/}"
+          curl -sfL -X POST "$url/api/sync" \
+            -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
+
   live-sync:
     if: >
       github.event_name == 'workflow_dispatch' ||
@@ -34,16 +48,19 @@ jobs:
     steps:
       - name: Poll live-sync every 5s for the game window
         run: |
+          # срезаем завершающий "/", если он есть в секрете — иначе получится
+          # двойной слэш "…app//api/live-sync", и Vercel/Next.js ответит 308
+          # на "тот же" (канонический) URL, а curl без -L это не пройдёт
           url="${{ inputs.site_url || secrets.SITE_URL }}"
+          url="${url%/}"
           minutes="${{ inputs.poll_minutes || 300 }}"
           echo "[$(date '+%H:%M:%S')] live-sync poller started, target: $url, window: ${minutes}m"
           end=$(( $(date +%s) + minutes * 60 ))
           i=0
           while [ "$(date +%s)" -lt "$end" ]; do
             i=$((i+1))
-            if curl -s -o /dev/null -w "status=%{http_code} redirected_to=%{redirect_url}\n" \
-              -X POST "$url/api/live-sync" \
-              -H "Authorization: Bearer $SYNC_SECRET"; then
+            if curl -sfL -X POST "$url/api/live-sync" \
+              -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"; then
               [ $(( i % 12 )) -eq 0 ] && echo "[$(date '+%H:%M:%S')] sync OK (iter #$i)"
             else
               echo "[$(date '+%H:%M:%S')] sync FAILED (iter #$i), will retry"
