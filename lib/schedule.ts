@@ -44,3 +44,31 @@ export function formatRange(start: Date, endExclusive: Date): string {
 
   return `${startLabel}–${endLabel}`;
 }
+
+export function parseTimeMinutes(value: string | null | undefined): number {
+  if (!value) return 24 * 60;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return 24 * 60;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 24 * 60;
+
+  return hours * 60 + minutes;
+}
+
+export function sortGamesByDateAndTime<T extends { date: Date | string; timeFormat?: string | null }>(
+  games: T[],
+  direction: "asc" | "desc" = "asc"
+): T[] {
+  return [...games].sort((a, b) => {
+    const aTime = new Date(a.date).getTime();
+    const bTime = new Date(b.date).getTime();
+
+    if (aTime !== bTime) {
+      return direction === "asc" ? aTime - bTime : bTime - aTime;
+    }
+
+    return parseTimeMinutes(a.timeFormat) - parseTimeMinutes(b.timeFormat);
+  });
+}
