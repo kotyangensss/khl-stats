@@ -4,11 +4,19 @@ on:
   schedule:
     # Полное расписание — раз в сутки, в 03:00 UTC
     - cron: "0 3 * * *"
-    # Более частое обновление счёта — каждые 5 минут.
-    # GitHub Actions не гарантирует точность cron при высокой нагрузке на
-    # платформе — в реальности интервал может быть больше заявленных 5 минут.
+    # Просто «спусковой крючок» для live-поллера: реальная частота
+    # поллинга (10 сек) задаётся внутри джобы ниже.
     - cron: "*/5 * * * *"
-  workflow_dispatch: {} # позволяет запускать вручную из вкладки Actions
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: 'Base URL (для теста на дев-окружении; пусто = secrets.SITE_URL)'
+        default: ''
+        required: false
+
+concurrency:
+  group: live-sync
+  cancel-in-progress: true
 
 jobs:
   full-sync:
@@ -23,8 +31,26 @@ jobs:
   live-sync:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *'
     runs-on: ubuntu-latest
+    timeout-minutes: 21
     steps:
-      - name: Refresh live matches
+      - name: Poll live-sync every 10s for 20 minutes
         run: |
-          curl -sf -X POST "${{ secrets.SITE_URL }}/api/live-sync" \
-            -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
+          url="${{ inputs.site_url || secrets.SITE_URL }}"
+          echo "[$(date '+%H:%M:%S')] live-sync poller started, target: $url"
+          end=$(( $(date +%s) + 20 * 60 ))
+          i=0
+          while [ "$(date +%s)" -lt "$end" ]; do
+            i=$((i+1))
+            echo "[$(date '+%H:%M:%S')] iteration #$i"
+            if curl -sf -X POST "$url/api/live-sync" \
+                 -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"; then
+              echo "[$(date '+%H:%M:%S')] sync OK"
+            else
+              echo "[$(date '+%H:%M:%S')] sync FAILED, will retry in 10s"
+            fi
+            now=$(date +%s)
+            rem=$(( end - now ))
+            [ "$rem" -le 0 ] && break
+            sleep $(( rem < 10 ? rem : 10 ))
+          done
+          echo "[$(date '+%H:%M:%S')] poll window finished after $i iterations"
