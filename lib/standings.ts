@@ -1,10 +1,14 @@
-import { getSession } from "./khl-client";
+import { prisma } from "./db";
 import type { StandingsData, StandingsGroup, StandingsTeam } from "./types";
 
-const STANDINGS_URL = "https://www.khl.ru/rest/standings/regular/";
-const CACHE_TTL = 60_000;
-
-let cached: { value: StandingsData; expiresAt: number } | null = null;
+export function emptyStandings(): StandingsData {
+  return {
+    overall: { conference: "Общая таблица", division: "", teams: [] },
+    conferenceGroups: [],
+    groups: [],
+    teamsById: {},
+  };
+}
 
 function numberValue(value: unknown): number {
   const number = Number(value);
@@ -83,7 +87,7 @@ function groupsFromPayload(payload: unknown): StandingsGroup[] {
   return groups;
 }
 
-function normalizeStandings(payload: unknown): StandingsData {
+export function normalizeStandings(payload: unknown): StandingsData {
   const response = payload as {
     data?: { json?: { divisions?: unknown[] } };
   };
@@ -172,49 +176,88 @@ function normalizeStandings(payload: unknown): StandingsData {
   };
 }
 
-export async function getStandings(forceRefresh = false): Promise<StandingsData> {
-  if (!forceRefresh && cached && cached.expiresAt > Date.now()) return cached.value;
-
-  const session = await getSession();
-  const body = new URLSearchParams({
-    "values[type]": "regular",
-    sessid: session.sessid,
-  });
-  let cookie = session.cookie;
-  let response: Response | null = null;
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    response = await fetch(STANDINGS_URL, {
-      method: "POST",
-      redirect: "manual",
-      headers: {
-        Accept: "*/*",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36",
-        "X-Requested-With": "XMLHttpRequest",
-        Origin: "https://www.khl.ru",
-        Referer: "https://www.khl.ru/",
-        Cookie: cookie,
-      },
-      body: body.toString(),
-      cache: "no-store",
-    });
-
-    const setCookie = response.headers.getSetCookie?.() ?? [];
-    if (setCookie.length > 0) {
-      cookie = [cookie, ...setCookie.map((value) => value.split(";")[0])]
-        .filter(Boolean)
-        .join("; ");
-    }
-
-    const location = response.headers.get("location");
-    if (!(response.status >= 300 && response.status < 400 && location)) break;
+function groupsFromRows(rows: Awaited<ReturnType<typeof prisma.standingsRow.findMany>>): StandingsData {
+  const teams = rows.map((row) => ({
+    id: row.teamId,
+    name: row.name,
+    logoUrl: row.logoUrl,
+    conference: row.conference,
+    division: row.division,
+    rank: row.rank,
+    gamesPlayed: row.gamesPlayed,
+    wins: row.wins,
+    otWins: row.otWins,
+    shootoutWins: row.shootoutWins,
+    shootoutLosses: row.shootoutLosses,
+    otLosses: row.otLosses,
+    losses: row.losses,
+    goalsFor: row.goalsFor,
+    goalsAgainst: row.goalsAgainst,
+    goalDiff: row.goalDiff,
+    points: row.points,
+    playoff: row.playoff,
+  }));
+  const grouped = new Map<string, typeof teams>();
+  for (const team of teams) {
+    const key = `${team.conference}\u0000${team.division}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(team);
   }
+  const groups = Array.from(grouped, ([key, groupTeams]) => {
+    const [conference, division] = key.split("\u0000");
+    return { conference, division, teams: groupTeams };
+  });
+  const conferenceGroups = new Map<string, typeof teams>();
+  for (const team of teams) {
+    if (!conferenceGroups.has(team.conference)) conferenceGroups.set(team.conference, []);
+    conferenceGroups.get(team.conference)!.push(team);
+  }
+  return {
+    overall: { conference: "Общая таблица", division: "", teams },
+    conferenceGroups: Array.from(conferenceGroups, ([conference, conferenceTeams]) => ({ conference, division: "", teams: conferenceTeams })),
+    groups,
+    teamsById: Object.fromEntries(teams.map((team) => [team.id, team])),
+  };
+}
 
-  if (!response) throw new Error("Не удалось выполнить запрос standings");
-  if (!response.ok) throw new Error(`Запрос standings вернул ошибку: ${response.status}`);
+export async function getStandingsFromDb(): Promise<StandingsData> {
+  return groupsFromRows(await prisma.standingsRow.findMany({ orderBy: [{ rank: "asc" }, { teamId: "asc" }] }));
+}
 
-  const value = normalizeStandings(await response.json());
-  cached = { value, expiresAt: Date.now() + CACHE_TTL };
-  return value;
+export async function saveStandingsToDb(value: StandingsData): Promise<number> {
+  const rows = Object.values(value.teamsById);
+  await prisma.$transaction([
+    prisma.standingsRow.deleteMany(),
+    ...rows.map((team) => prisma.standingsRow.create({
+      data: {
+        teamId: team.id,
+        name: team.name,
+        logoUrl: team.logoUrl,
+        conference: team.conference,
+        division: team.division,
+        rank: team.rank,
+        gamesPlayed: team.gamesPlayed,
+        wins: team.wins,
+        otWins: team.otWins,
+        shootoutWins: team.shootoutWins,
+        shootoutLosses: team.shootoutLosses,
+        otLosses: team.otLosses,
+        losses: team.losses,
+        goalsFor: team.goalsFor,
+        goalsAgainst: team.goalsAgainst,
+        goalDiff: team.goalDiff,
+        points: team.points,
+        playoff: team.playoff,
+      },
+    })),
+  ]);
+  return rows.length;
+}
+
+export async function getStandingsSafe(): Promise<StandingsData> {
+  try {
+    return await getStandingsFromDb();
+  } catch {
+    return emptyStandings();
+  }
 }

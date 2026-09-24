@@ -2,12 +2,20 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getStandings } from "@/lib/standings";
+import { getStandingsSafe } from "@/lib/standings";
 import { TeamLogo } from "@/components/TeamLogo";
 import { GameRow } from "@/components/GameRow";
 import { TeamStatsLine } from "@/components/TeamStatsLine";
 import type { Game } from "@/lib/types";
 import { colors } from "@/lib/theme";
+import { sortGamesByDateAndTime } from "@/lib/schedule";
+
+export const revalidate = 30;
+
+export async function generateStaticParams() {
+  const teams = await prisma.team.findMany({ select: { id: true } });
+  return teams.map((team) => ({ id: String(team.id) }));
+}
 
 const sectionHeading: CSSProperties = {
   fontFamily: "var(--font-display)",
@@ -42,24 +50,60 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const teamId = Number(id);
 
-  const team = await prisma.team.findUnique({ where: { id: teamId } });
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { id: true, name: true, logoUrl: true },
+  });
   if (!team) notFound();
 
-  const [upcoming, past, standings] = await Promise.all([
+  const [upcomingRaw, pastRaw, standings] = await Promise.all([
     prisma.game.findMany({
       where: { status: "SCHEDULED", OR: [{ teamAId: teamId }, { teamBId: teamId }] },
       orderBy: { date: "asc" },
-      include: { teamA: true, teamB: true },
+      select: {
+        id: true,
+        date: true,
+        timeFormat: true,
+        status: true,
+        homeScore: true,
+        visitorScore: true,
+        overtime: true,
+        venue: true,
+        teamA: { select: { id: true, name: true, logoUrl: true } },
+        teamB: { select: { id: true, name: true, logoUrl: true } },
+        liveStatus: true,
+        livePeriod: true,
+        liveClock: true,
+        liveUpdatedAt: true,
+      },
       take: 15,
     }),
     prisma.game.findMany({
       where: { status: "FINISHED", OR: [{ teamAId: teamId }, { teamBId: teamId }] },
       orderBy: { date: "desc" },
-      include: { teamA: true, teamB: true },
+      select: {
+        id: true,
+        date: true,
+        timeFormat: true,
+        status: true,
+        homeScore: true,
+        visitorScore: true,
+        overtime: true,
+        venue: true,
+        teamA: { select: { id: true, name: true, logoUrl: true } },
+        teamB: { select: { id: true, name: true, logoUrl: true } },
+        liveStatus: true,
+        livePeriod: true,
+        liveClock: true,
+        liveUpdatedAt: true,
+      },
       take: 15,
     }),
-    getStandings(),
+    getStandingsSafe(),
   ]);
+
+  const upcoming = sortGamesByDateAndTime(upcomingRaw, "asc");
+  const past = sortGamesByDateAndTime(pastRaw, "desc");
 
   const stats = standings.teamsById[teamId];
 

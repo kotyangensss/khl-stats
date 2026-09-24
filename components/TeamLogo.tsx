@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import type { Team } from "@/lib/types";
 import { logoSrc } from "@/lib/format";
 import { colors } from "@/lib/theme";
@@ -34,12 +35,12 @@ export function TeamLogo({ team, size = 44 }: { team: Team; size?: number }) {
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src={src}
       alt={team.name}
       width={size}
       height={size}
+      unoptimized
       style={{ width: size, height: size, objectFit: "contain", flexShrink: 0 }}
       onError={() => setBroken(true)}
     />
