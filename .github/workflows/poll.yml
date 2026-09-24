@@ -6,8 +6,8 @@ on:
     - cron: "0 3 * * *"
     # Старт первого live-окна: 13:00 MSK = 10:00 UTC (держит цикл 5 часов, до 18:00 MSK)
     - cron: "0 10 * * *"
-    # Старт второго live-окна: 17:00 MSK = 15:00 UTC (держит цикл 5 часов, до 23:00 MSK)
-    - cron: "0 15 * * *"
+    # Старт второго live-окна: 18:00 MSK = 15:00 UTC (держит цикл 5 часов, до 23:00 MSK)
+    - cron: "30 14 * * *"
   workflow_dispatch:
     inputs:
       site_url:
@@ -20,18 +20,6 @@ on:
         required: false
 
 jobs:
-  full-sync:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: full-sync
-      cancel-in-progress: false
-    steps:
-      - name: Refresh calendar
-        run: |
-          curl -sf -X POST "${{ secrets.SITE_URL }}/api/sync" \
-            -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"
-
   live-sync:
     if: >
       github.event_name == 'workflow_dispatch' ||
