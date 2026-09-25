@@ -49,7 +49,7 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
     const loadStandings = () => fetch("/api/standings")
       .then((res) => res.json() as Promise<StandingsData>)
       .then((json) => setStandings(json.teamsById))
-      .catch(() => {});
+      .catch(() => { });
 
     loadStandings();
     const timer = window.setInterval(loadStandings, 300_000);
@@ -80,17 +80,17 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
       <header style={styles.topbar}>
         <span style={styles.wordmark}>Расписание КХЛ</span>
         <nav style={styles.tabs}>
-          <Link href="/standings" style={styles.standingsLink}>Таблица</Link>
-          {TABS.map((item) => <button key={item.key} onClick={() => setUrl(item.key, 1)} style={{ ...styles.tabButton, ...(tab === item.key ? styles.tabButtonActive : {}) }}>{item.label}</button>)}
+          <Link href="/standings" style={styles.standingsLink} className="khl-link">Таблица</Link>
+          {TABS.map((item) => <button key={item.key} onClick={() => setUrl(item.key, 1)} className="khl-tab" style={{ ...styles.tabButton, ...(tab === item.key ? styles.tabButtonActive : {}) }}>{item.label}</button>)}
         </nav>
       </header>
       {error && <div style={styles.emptyState}><p style={styles.emptyTitle}>Не удалось загрузить</p><p style={styles.emptyBody}>{error}. Обновите страницу через минуту.</p></div>}
       {!error && data.games.length === 0 && <div style={styles.emptyState}><p style={styles.emptyTitle}>Матчей не найдено</p><p style={styles.emptyBody}>За этот период ({rangeLabel}) матчей нет — попробуйте соседний период.</p></div>}
       {grouped.length > 0 && <section style={styles.list}>{grouped.map(([date, dayGames]) => <div key={date}><div style={styles.dayHeading}>{formatDayHeading(date)}</div>{dayGames.map((game) => <GameRow key={game.id} game={game} standings={standings} compactStats={tab === "upcoming"} showStats={tab === "upcoming"} teamLinksEnabled={false} />)}</div>)}</section>}
       <div style={styles.pagination}>
-        <button style={styles.pageButton} disabled={page <= 1} onClick={() => setUrl(tab, page - 1)}>Назад</button>
+        <button style={styles.pageButton} className="khl-btn" disabled={page <= 1} onClick={() => setUrl(tab, page - 1)}>Назад</button>
         <span style={styles.pageLabel}>{rangeLabel}</span>
-        <button style={styles.pageButton} onClick={() => setUrl(tab, page + 1)}>Вперёд</button>
+        <button style={styles.pageButton} className="khl-btn" onClick={() => setUrl(tab, page + 1)}>Вперёд</button>
       </div>
     </main>
   );

@@ -16,6 +16,7 @@ export function TeamLogo({ team, size = 44 }: { team: Team; size?: number }) {
     return (
       <span
         title={team.name}
+        className="khl-logo"
         style={{
           width: size,
           height: size,
@@ -39,6 +40,7 @@ export function TeamLogo({ team, size = 44 }: { team: Team; size?: number }) {
 
   return (
     <span
+      className="khl-logo"
       style={{
         display: "inline-flex",
         borderRadius: "50%",

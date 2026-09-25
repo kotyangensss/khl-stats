@@ -22,12 +22,12 @@ function TeamBlock({
 }) {
   if (href) {
     return (
-      <Link href={href} style={style}>
+      <Link href={href} style={style} className="khl-team-link">
         {children}
       </Link>
     );
   }
-  return <span style={style}>{children}</span>;
+  return <span style={style} className="khl-team-link">{children}</span>;
 }
 
 export function GameRow({
@@ -91,8 +91,6 @@ export function GameRow({
   return (
     <div
       onClick={(e) => {
-        // Если клик пришёлся на ссылку команды (или что-то внутри неё) —
-        // не перехватываем его переходом на страницу матча.
         if ((e.target as HTMLElement).closest("a")) return;
         router.push(`/game/${game.id}`);
       }}
@@ -101,6 +99,7 @@ export function GameRow({
       onKeyDown={(e) => {
         if (e.key === "Enter") router.push(`/game/${game.id}`);
       }}
+      className="khl-row"
       style={{
         cursor: "pointer",
         borderBottom: `1px solid ${colors.borderSoft}`,

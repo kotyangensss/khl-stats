@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Inter_Tight } from "next/font/google";
+import { Inter, Inter_Tight } from "next/font/google";
 import "./globals.css";
+
+const bodyFont = Inter({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 const displayFont = Inter_Tight({
   subsets: ["latin", "cyrillic"],
-  weight: ["500"],
+  weight: ["500", "600", "700"],
   variable: "--font-display",
   display: "swap",
 });
