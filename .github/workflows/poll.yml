@@ -47,13 +47,13 @@ jobs:
             i=$((i+1))
             if curl -sfL -X POST "$url/api/live-sync" \
               -H "Authorization: Bearer ${{ secrets.SYNC_SECRET }}"; then
-              [ $(( i % 12 )) -eq 0 ] && echo "[$(date '+%H:%M:%S')] sync OK (iter #$i)"
+              [ $(( i % 3 )) -eq 0 ] && echo "[$(date '+%H:%M:%S')] sync OK (iter #$i)"
             else
               echo "[$(date '+%H:%M:%S')] sync FAILED (iter #$i), will retry"
             fi
             now=$(date +%s)
             rem=$(( end - now ))
             [ "$rem" -le 0 ] && break
-            sleep $(( rem < 5 ? rem : 5 ))
+            sleep $(( rem < 20 ? rem : 20 ))
           done
           echo "[$(date '+%H:%M:%S')] poll window finished after $i iterations"

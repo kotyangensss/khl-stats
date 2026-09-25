@@ -71,15 +71,37 @@ async function getSessionOnce(): Promise<Session> {
   return { cookie: cookieJar.join("; "), sessid: match[1] };
 }
 
-// khl.ru иногда отдаёт протухшую/невалидную сессию с первой попытки —
-// один автоматический повтор снимает большую часть шумных сбоев.
+// Кэш сессии между вызовами: на тёплом serverless-инстансе Vercel эта
+// переменная переживает между запросами, поэтому не тянем главную
+// страницу khl.ru на КАЖДЫЙ вызов /api/live-sync (а их каждые 5-20 сек).
+let cachedSession: Session | null = null;
+let sessionExpiresAt = 0;
+const SESSION_TTL_MS = 8 * 60 * 1000; // 8 минут
+
 async function getSession(): Promise<Session> {
+  const now = Date.now();
+  if (cachedSession && now < sessionExpiresAt) {
+    return cachedSession;
+  }
+
+  let session: Session;
   try {
-    return await getSessionOnce();
+    session = await getSessionOnce();
   } catch (error) {
     console.warn("getSession: первая попытка не удалась, повторяю:", error);
-    return await getSessionOnce();
+    session = await getSessionOnce();
   }
+
+  cachedSession = session;
+  sessionExpiresAt = now + SESSION_TTL_MS;
+  return session;
+}
+
+/** Сбросить кэш сессии — вызывать, если downstream-запрос (calendar/game-header)
+ * упал так, будто сессия протухла (например, ответ не похож на JSON). */
+function invalidateSession() {
+  cachedSession = null;
+  sessionExpiresAt = 0;
 }
 
 async function fetchGameHeader(gameId: number, session: Session) {
@@ -143,7 +165,16 @@ async function run(req: NextRequest) {
 
   try {
     const session = await getSession();
-    const result = await syncLiveGames((gameId) => fetchGameHeader(gameId, session));
+    let result;
+    try {
+      result = await syncLiveGames((gameId) => fetchGameHeader(gameId, session));
+    } catch (error) {
+      // Возможно, кэшированная сессия протухла раньше TTL — сбрасываем и пробуем один раз заново.
+      invalidateSession();
+      console.warn("Live sync: retry after clearing cached session:", error);
+      const freshSession = await getSession();
+      result = await syncLiveGames((gameId) => fetchGameHeader(gameId, freshSession));
+    }
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("Live sync failed:", error);
