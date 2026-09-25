@@ -10,6 +10,7 @@ import { overtimeLabel, formatDayHeading, liveStatusLabel } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { TeamStatsLine } from "@/components/TeamStatsLine";
+import { teamColors } from "@/lib/team-colors";
 
 export const revalidate = 30;
 
@@ -143,22 +144,35 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const statsA = standings.teamsById[game.teamAId];
   const statsB = standings.teamsById[game.teamBId];
   const isPlayoff = game.stage?.type === "playoff";
+  const colorA = teamColors[game.teamA.id];
+  const colorB = teamColors[game.teamB.id];
 
   const teamNameStyle = (won: boolean): CSSProperties => ({
     fontFamily: "var(--font-display)",
     fontWeight: won ? 700 : decided ? 500 : 600,
     fontSize: "1.4rem",
-    color: won ? colors.win : decided ? colors.loss : colors.text,
+    color: decided && !won ? colors.muted : colors.text,
   });
 
   return (
     <main style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "clamp(1.25rem, 5vw, 3rem)" }}>
       <LiveRefresh active={game.status !== "FINISHED"} />
-      <Link href="/" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
+      <Link href="/" className="khl-back-link" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
         ← Расписание
       </Link>
 
-      <div style={{ textAlign: "center", marginTop: "2.5rem" }}>
+      <div
+        style={{
+          textAlign: "center",
+          marginTop: "2.5rem",
+          padding: "2.5rem 1.5rem",
+          borderRadius: "28px",
+          background: [
+            colorA ? `linear-gradient(90deg, ${colorA}55 0%, ${colorA}00 60%)` : "",
+            colorB ? `linear-gradient(270deg, ${colorB}55 0%, ${colorB}00 60%)` : "",
+          ].filter(Boolean).join(", "),
+        }}
+      >
         <div style={{ color: colors.accent, fontFamily: "var(--font-display)", fontSize: "0.9rem", fontWeight: 500 }}>
           {formatDayHeading(game.date.toISOString())}
           {game.timeFormat ? ` · ${game.timeFormat} МСК` : ""}
@@ -177,11 +191,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         >
           <Link
             href={`/team/${game.teamA.id}`}
+            className="khl-team-hero"
             style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}
           >
             <TeamLogo team={game.teamA} size={120} />
             <span style={teamNameStyle(aWon)}>{game.teamA.name}</span>
-            <TeamStatsLine stats={statsA} />
+            {!decided && <TeamStatsLine stats={statsA} />}
           </Link>
 
           <div style={{ textAlign: "center", minWidth: "8rem" }}>
@@ -221,11 +236,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
           <Link
             href={`/team/${game.teamB.id}`}
+            className="khl-team-hero"
             style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}
           >
             <TeamLogo team={game.teamB} size={120} />
             <span style={teamNameStyle(bWon)}>{game.teamB.name}</span>
-            <TeamStatsLine stats={statsB} />
+            {!decided && <TeamStatsLine stats={statsB} />}
           </Link>
         </div>
 
@@ -279,24 +295,91 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       </div>
 
       {(events.length > 0 || game.status === "FINISHED") && (
-        <section style={{ maxWidth: "42rem", margin: "3rem auto 0", textAlign: "left" }}>
-          <div style={sectionHeading}>Голы и авторы</div>
+        <section style={{ maxWidth: "56rem", margin: "3.5rem auto 0", textAlign: "left" }}>
           {events.length === 0 && (
-            <p style={{ color: colors.muted, fontFamily: "var(--font-body)", fontSize: "0.9rem" }}>
+            <p style={{ color: colors.muted, fontFamily: "var(--font-body)", fontSize: "0.95rem" }}>
               Данные об авторах голов пока не предоставлены источником.
             </p>
           )}
-          {events.map((event, index) => (
-            <div key={`${event.period}-${event.time}-${index}`} style={{ display: "grid", gridTemplateColumns: "4rem 1fr auto", gap: "0.75rem", alignItems: "baseline", padding: "0.7rem 0", borderBottom: `1px solid ${colors.borderSoft}`, fontFamily: "var(--font-body)", fontSize: "0.9rem" }}>
-              <span style={{ color: colors.muted }}>{event.time ?? "—"}</span>
-              <span>
-                <strong>{event.scorer ?? "Автор не указан"}</strong>
-                {event.team ? ` · ${event.team === "home" ? game.teamA.name : event.team === "away" ? game.teamB.name : event.team}` : ""}
-                {event.assists?.length ? ` · ассистенты: ${event.assists.join(", ")}` : ""}
-              </span>
-              <span style={{ color: colors.accent }}>{event.score ?? ""}</span>
-            </div>
-          ))}
+          {(() => {
+            const periodLabel = (p?: number) => {
+              if (p == null) return "Период не указан";
+              if (p <= 3) return `${p}-й период`;
+              if (isPlayoff) return `${p - 3}-й овертайм`;
+              return p === 4 ? "Овертайм" : "Буллиты";
+            };
+
+            let lastPeriod: number | undefined;
+
+            return events.map((event, index) => {
+              const teamId = event.team === "home" ? game.teamA.id : event.team === "away" ? game.teamB.id : undefined;
+              const teamColor = teamId ? teamColors[teamId] : undefined;
+              const teamName = event.team === "home" ? game.teamA.name : event.team === "away" ? game.teamB.name : event.team;
+              const isHome = event.team === "home";
+              const isAway = event.team === "away";
+
+              const showPeriodHeader = event.period !== lastPeriod;
+              lastPeriod = event.period;
+
+              const scorerBlock = (
+                <span style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                  <strong style={{ fontSize: "1.1rem", fontWeight: 700, color: colors.text }}>
+                    {event.scorer ?? "Автор не указан"}
+                  </strong>
+                  {event.assists?.length ? (
+                    <span style={{ color: colors.muted, fontSize: "0.85rem" }}>
+                      {event.assists.join(", ")}
+                    </span>
+                  ) : null}
+                </span>
+              );
+
+              return (
+                <div key={`${event.period}-${event.time}-${index}`}>
+                  {showPeriodHeader && (
+                    <div
+                      style={{
+                        fontFamily: "var(--font-display)",
+                        fontSize: "1rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        textAlign: "center",
+                        color: colors.accent,
+                        padding: index === 0 ? "0 0 1rem" : "2rem 0 1rem",
+                      }}
+                    >
+                      {periodLabel(event.period)}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 8rem 1fr",
+                      alignItems: "center",
+                      gap: "1rem",
+                      padding: "0.9rem 0.5rem",
+                      borderLeft: `3px solid ${isHome ? teamColor ?? "transparent" : "transparent"}`,
+                      borderRight: `3px solid ${isAway ? teamColor ?? "transparent" : "transparent"}`,
+                      fontFamily: "var(--font-body)",
+                      fontSize: "1.05rem",
+                    }}
+                  >
+                    <div style={{ textAlign: "right" }}>{isHome ? scorerBlock : null}</div>
+                    <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem" }}>
+                      <span style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.85rem" }}>
+                        {event.time ?? "—"}
+                      </span>
+                      <span style={{ color: colors.accent, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.2rem" }}>
+                        {event.score ?? ""}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: "left" }}>{isAway ? scorerBlock : null}</div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </section>
       )}
 

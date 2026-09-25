@@ -110,7 +110,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   return (
     <main style={{ minHeight: "100vh", background: colors.bg, color: colors.text, paddingBottom: "4rem" }}>
       <div style={{ padding: "clamp(1.25rem, 5vw, 3rem)" }}>
-        <Link href="/" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
+        <Link href="/" className="khl-back-link" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
           ← Расписание
         </Link>
 

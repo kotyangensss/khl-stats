@@ -197,29 +197,42 @@ function groupsFromRows(rows: Awaited<ReturnType<typeof prisma.standingsRow.find
     points: row.points,
     playoff: row.playoff,
   }));
+
+  function withGroupRanks(groupTeams: typeof teams): typeof teams {
+    return [...groupTeams]
+      .sort((a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor)
+      .map((team, index) => ({ ...team, rank: index + 1 }));
+  }
+
   const grouped = new Map<string, typeof teams>();
   for (const team of teams) {
     const key = `${team.conference}\u0000${team.division}`;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(team);
   }
+
   const groups = Array.from(grouped, ([key, groupTeams]) => {
     const [conference, division] = key.split("\u0000");
-    return { conference, division, teams: groupTeams };
+    return { conference, division, teams: withGroupRanks(groupTeams) };
   });
+
   const conferenceGroups = new Map<string, typeof teams>();
   for (const team of teams) {
     if (!conferenceGroups.has(team.conference)) conferenceGroups.set(team.conference, []);
     conferenceGroups.get(team.conference)!.push(team);
   }
+
   return {
     overall: { conference: "Общая таблица", division: "", teams },
-    conferenceGroups: Array.from(conferenceGroups, ([conference, conferenceTeams]) => ({ conference, division: "", teams: conferenceTeams })),
+    conferenceGroups: Array.from(conferenceGroups, ([conference, conferenceTeams]) => ({
+      conference,
+      division: "",
+      teams: withGroupRanks(conferenceTeams),
+    })),
     groups,
     teamsById: Object.fromEntries(teams.map((team) => [team.id, team])),
   };
 }
-
 export async function getStandingsFromDb(): Promise<StandingsData> {
   return groupsFromRows(await prisma.standingsRow.findMany({ orderBy: [{ rank: "asc" }, { teamId: "asc" }] }));
 }
