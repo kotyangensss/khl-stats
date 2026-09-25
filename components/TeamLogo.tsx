@@ -7,10 +7,19 @@ import { logoSrc } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { teamColors } from "@/lib/team-colors";
 
-export function TeamLogo({ team, size = 44 }: { team: Team; size?: number }) {
+export function TeamLogo({
+  team,
+  size = 44,
+  ring = true,
+}: {
+  team: Team;
+  size?: number;
+  /** Цветное кольцо/подсветка акцентом команды — выключается там, где нужно чисто лого */
+  ring?: boolean;
+}) {
   const [broken, setBroken] = useState(false);
   const src = logoSrc(team.logoUrl);
-  const accent = teamColors[team.id];
+  const accent = ring ? teamColors[team.id] : undefined;
 
   if (!src || broken) {
     return (
@@ -55,7 +64,7 @@ export function TeamLogo({ team, size = 44 }: { team: Team; size?: number }) {
         width={size}
         height={size}
         unoptimized
-        style={{ width: size, height: size, objectFit: "contain", borderRadius: "50%", background: colors.bg }}
+        style={{ width: size, height: size, objectFit: "contain", borderRadius: "50%"}}
         onError={() => setBroken(true)}
       />
     </span>

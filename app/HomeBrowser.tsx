@@ -86,7 +86,7 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
       </header>
       {error && <div style={styles.emptyState}><p style={styles.emptyTitle}>Не удалось загрузить</p><p style={styles.emptyBody}>{error}. Обновите страницу через минуту.</p></div>}
       {!error && data.games.length === 0 && <div style={styles.emptyState}><p style={styles.emptyTitle}>Матчей не найдено</p><p style={styles.emptyBody}>За этот период ({rangeLabel}) матчей нет — попробуйте соседний период.</p></div>}
-      {grouped.length > 0 && <section style={styles.list}>{grouped.map(([date, dayGames]) => <div key={date}><div style={styles.dayHeading}>{formatDayHeading(date)}</div>{dayGames.map((game) => <GameRow key={game.id} game={game} standings={standings} compactStats={tab === "upcoming"} showStats={tab === "upcoming"} teamLinksEnabled={false} />)}</div>)}</section>}
+      {grouped.length > 0 && <section style={styles.list}>{grouped.map(([date, dayGames]) => <div key={date}><div style={styles.dayHeading}>{formatDayHeading(date)}</div>{dayGames.map((game) => <GameRow key={game.id} game={game} standings={standings} compactStats={tab === "upcoming"} showStats={tab === "upcoming"} />)}</div>)}</section>}
       <div style={styles.pagination}>
         <button style={styles.pageButton} className="khl-btn" disabled={page <= 1} onClick={() => setUrl(tab, page - 1)}>Назад</button>
         <span style={styles.pageLabel}>{rangeLabel}</span>

@@ -157,7 +157,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   return (
     <main style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "clamp(1.25rem, 5vw, 3rem)" }}>
       <LiveRefresh active={game.status !== "FINISHED"} />
-      <Link href="/" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
+      <Link href="/" className="khl-back-link" style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", textDecoration: "none" }}>
         ← Расписание
       </Link>
 
@@ -191,6 +191,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         >
           <Link
             href={`/team/${game.teamA.id}`}
+            className="khl-team-hero"
             style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}
           >
             <TeamLogo team={game.teamA} size={120} />
@@ -235,6 +236,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
           <Link
             href={`/team/${game.teamB.id}`}
+            className="khl-team-hero"
             style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}
           >
             <TeamLogo team={game.teamB} size={120} />
