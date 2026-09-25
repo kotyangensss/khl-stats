@@ -38,6 +38,7 @@ export function GameRow({
   compactStats = false,
   showStats = true,
   teamLinksEnabled = true,
+  isReversed = false,
 }: {
   game: Game;
   showDate?: boolean;
@@ -48,6 +49,7 @@ export function GameRow({
   showStats?: boolean;
   /** На главной клик по команде не должен вести на страницу команды — только на матч */
   teamLinksEnabled?: boolean;
+  isReversed?: boolean;
 }) {
   const router = useRouter();
   const ot = overtimeLabel(game.overtime);
@@ -58,8 +60,8 @@ export function GameRow({
   const highlightedTeamWon = highlightTeamId === game.teamA.id ? aWon : bWon;
   const rowAura = highlightTeamId && decided && hasWinner
     ? highlightedTeamWon
-      ? `linear-gradient(90deg, ${colors.win}28, transparent 72%)`
-      : `linear-gradient(90deg, ${colors.loss}28, transparent 72%)`
+      ? `linear-gradient(${isReversed ? "270deg" : "90deg"}, ${colors.win}28, transparent 72%)`
+      : `linear-gradient(${isReversed ? "270deg" : "90deg"}, ${colors.loss}28, transparent 72%)`
     : undefined;
 
   // Цвет текста больше не несёт победу/поражение — только жирность.

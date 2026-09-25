@@ -47,6 +47,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     where: { id: Number(id) },
     select: {
       id: true,
+      stage: { select: { tnId: true, name: true, type: true } },
       date: true,
       timeFormat: true,
       status: true,
@@ -131,16 +132,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const periods = Array.isArray(game.periodScores) ? (game.periodScores as string[]) : [];
   const events = Array.isArray(game.liveEvents)
     ? (game.liveEvents as Array<{
-        period?: number;
-        time?: string;
-        team?: string;
-        scorer?: string;
-        assists?: string[];
-        score?: string;
-      }>)
+      period?: number;
+      time?: string;
+      team?: string;
+      scorer?: string;
+      assists?: string[];
+      score?: string;
+    }>)
     : [];
   const statsA = standings.teamsById[game.teamAId];
   const statsB = standings.teamsById[game.teamBId];
+  const isPlayoff = game.stage?.type === "playoff";
 
   const teamNameStyle = (won: boolean): CSSProperties => ({
     fontFamily: "var(--font-display)",
@@ -228,13 +230,50 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         </div>
 
         {periods.length > 0 && (
-          <div style={{ display: "flex", justifyContent: "center", gap: "clamp(1rem, 4vw, 2.5rem)", marginTop: "3rem" }}>
-            {periods.map((p, i) => (
-              <div key={i} style={{ textAlign: "center" }}>
-                <div style={{ color: colors.muted, fontSize: "0.75rem", fontFamily: "var(--font-body)" }}>{i + 1}-й период</div>
-                <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "1.15rem", marginTop: "0.25rem" }}>{p}</div>
-              </div>
-            ))}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: "clamp(1rem, 4vw, 2.5rem)",
+              marginTop: "3rem"
+            }}
+          >
+            {periods.map((p, i) => {
+              let label;
+
+              if (i < 3) {
+                label = `${i + 1}-й период`;
+              } else if (isPlayoff) {
+                label = `${i - 2}-й овертайм`;
+              } else {
+                label = i === 3 ? "Овертайм" : "Буллиты";
+              }
+
+              return (
+                <div key={i} style={{ textAlign: "center" }}>
+                  <div
+                    style={{
+                      color: colors.muted,
+                      fontSize: "0.75rem",
+                      fontFamily: "var(--font-body)"
+                    }}
+                  >
+                    {label}
+                  </div>
+
+                  <div
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 600,
+                      fontSize: "1.15rem",
+                      marginTop: "0.25rem"
+                    }}
+                  >
+                    {p}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -267,7 +306,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             <div style={sectionHeading}>Последние матчи: {game.teamA.name}</div>
             {recentA.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
             {recentA.map((g) => (
-              <GameRow key={g.id} game={toGame(g)} showDate />
+              <GameRow key={g.id} game={toGame(g)} showDate standings={standings.teamsById} highlightTeamId={game.teamA.id} />
             ))}
           </div>
 
@@ -275,7 +314,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             <div style={sectionHeading}>Последние матчи: {game.teamB.name}</div>
             {recentB.length === 0 && <p style={{ color: colors.muted, fontSize: "0.9rem" }}>Пока нет сыгранных матчей.</p>}
             {recentB.map((g) => (
-              <GameRow key={g.id} game={toGame(g)} showDate />
+              <GameRow key={g.id} game={toGame(g)} showDate standings={standings.teamsById} highlightTeamId={game.teamB.id} isReversed={true} />
             ))}
           </div>
         </div>
