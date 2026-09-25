@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Inter_Tight } from "next/font/google";
 import "./globals.css";
+
+const displayFont = Inter_Tight({
+  subsets: ["latin", "cyrillic"],
+  weight: ["500"],
+  variable: "--font-display",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Расписание КХЛ",
@@ -9,7 +17,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru">
+    <html lang="ru" className={displayFont.variable}>
       <body
         style={{
           margin: 0,

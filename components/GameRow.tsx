@@ -58,6 +58,7 @@ export function GameRow({
   const bWon = decided && (game.visitorScore ?? 0) > (game.homeScore ?? 0);
   const hasWinner = aWon || bWon;
   const highlightedTeamWon = highlightTeamId === game.teamA.id ? aWon : bWon;
+
   const rowAura = highlightTeamId && decided && hasWinner
     ? highlightedTeamWon
       ? `linear-gradient(${isReversed ? "270deg" : "90deg"}, ${colors.win}28, transparent 72%)`
@@ -67,6 +68,7 @@ export function GameRow({
   // Цвет текста больше не несёт победу/поражение — только жирность.
   // На странице команды результат подсвечивается фоном всей строки.
   const nameStyle = (won: boolean): CSSProperties => ({
+    fontFamily: "var(--font-display)",
     fontWeight: won ? 700 : decided ? 400 : 500,
     color: colors.text,
   });
@@ -99,7 +101,12 @@ export function GameRow({
       onKeyDown={(e) => {
         if (e.key === "Enter") router.push(`/game/${game.id}`);
       }}
-      style={{ cursor: "pointer", borderBottom: `1px solid ${colors.borderSoft}`, padding: "0.9rem 0", background: rowAura }}
+      style={{
+        cursor: "pointer",
+        borderBottom: `1px solid ${colors.borderSoft}`,
+        padding: "0.9rem 0 0.9rem 0.75rem",
+        background: rowAura,
+      }}
     >
       {showDate && (
         <div
@@ -115,7 +122,6 @@ export function GameRow({
           {formatShortDate(game.date)}
         </div>
       )}
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "1.25rem" }}>
         <TeamBlock href={teamLinksEnabled ? `/team/${game.teamA.id}` : null} style={teamLinkStyle("right")}>
           <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.15rem", minWidth: 0 }}>
@@ -138,10 +144,30 @@ export function GameRow({
           )}
           {game.status === "LIVE" && (
             <>
-              <span style={{ fontFamily: "var(--font-display)", fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.06em", color: colors.live }}>
-                LIVE
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                <span
+                  aria-hidden
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: colors.live,
+                    animation: "live-pulse 1.4s ease-in-out infinite",
+                  }}
+                />
+                <span style={{ fontFamily: "var(--font-display)", fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.06em", color: colors.live }}>
+                  LIVE
+                </span>
               </span>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.4rem", color: colors.text }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  fontSize: "1.4rem",
+                  color: colors.text,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
                 {game.homeScore} : {game.visitorScore}
               </span>
               {(game.liveStatus || game.liveClock) && (
@@ -152,7 +178,18 @@ export function GameRow({
             </>
           )}
           {game.status === "FINISHED" && (
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.4rem", color: colors.text, display: "inline-flex", alignItems: "baseline", gap: "0.35rem" }}>
+            <span
+              style={{
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: "1.4rem",
+                color: colors.text,
+                display: "inline-flex",
+                alignItems: "baseline",
+                gap: "0.35rem",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
               {game.homeScore}:{game.visitorScore}
               {ot && <span style={{ fontFamily: "var(--font-body)", fontSize: "0.75rem", fontWeight: 600, color: colors.accent }}>{ot}</span>}
             </span>
