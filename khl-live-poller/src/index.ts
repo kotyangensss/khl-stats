@@ -1,5 +1,6 @@
 import { LivePoller } from "./live-poller";
 import type { Env } from "./live-poller";
+import { runFullSync } from "./full-sync";
 
 export { LivePoller };
 
@@ -14,5 +15,10 @@ export default {
     }
 
     return new Response("khl-live-poller: используй POST /wake", { status: 404 });
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    console.log(`[scheduled] triggered by cron: ${event.cron}`);
+    ctx.waitUntil(runFullSync(env));
   },
 };

@@ -353,10 +353,10 @@ export class LivePoller extends DurableObject<Env> {
         await prisma.game.update({
           where: { id: candidate.id },
           data: {
-            status: isLive ? "LIVE" : isFinished ? "FINISHED" : "SCHEDULED",
+            ...(isLive? { status: "LIVE" as const }: candidate.status === "LIVE"? { status: "FINISHED" as const }: {}),
             ...(normalized.score?.home != null ? { homeScore: Number(normalized.score.home) } : {}),
             ...(normalized.score?.away != null ? { visitorScore: Number(normalized.score.away) } : {}),
-            ...(isLive && legendClock 
+            ...(isLive && legendClock
               ? {
                 livePeriod: legendClock.period,
                 liveClock: legendClock.isIntermission ? null : legendClock.clock,

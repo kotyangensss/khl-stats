@@ -26,6 +26,11 @@
 			}
 		]
 	},
+	"triggers": {
+		"crons": [
+			"*/30 * * * *"
+		]
+	},
 	"observability": {
 		"logs": {
 			"enabled": true,
