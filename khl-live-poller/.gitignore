@@ -1,0 +1,13 @@
+# Зависимости
+node_modules/
+
+# Секреты — реальный DATABASE_URL и локальные переопределения для wrangler dev
+.env
+.env.*
+.dev.vars
+
+# Локальное состояние wrangler dev / Miniflare (Durable Object storage, кэш и т.п.)
+.wrangler/
+
+# Сгенерированный Prisma Client (пересоздаётся командой `npx prisma generate`)
+prisma/generated/

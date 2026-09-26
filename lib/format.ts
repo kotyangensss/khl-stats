@@ -33,11 +33,3 @@ export function overtimeLabel(ots: string | null | undefined): string | null {
   if (v.includes("ot") || v.includes("о")) return "ОТ"; // овертайм
   return ots; // неизвестный формат — показываем как есть, а не скрываем
 }
-
-export function liveStatusLabel(status: string | null | undefined, period?: number | null): string | null {
-  if (!status) return null;
-  if (status.toLowerCase().includes("перерыв")) {
-    return period ? `Перерыв после ${period}-го периода` : "Перерыв";
-  }
-  return status;
-}

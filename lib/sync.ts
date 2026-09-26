@@ -68,6 +68,8 @@ export async function syncKhlData(calendar: KhlCalendarResponse, standingsData: 
           venue: null,
         },
         update: {
+          date: new Date(game.date),
+          timeFormat: game.time_format,
           status: mapGameStatus(game),
           homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
           visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
@@ -105,12 +107,21 @@ function todayInMoscow(): { start: Date; end: Date } {
   return { start, end };
 }
 
+function gameStartMoscow(game: { date: Date; timeFormat: string | null }): Date | null {
+  const datePart = game.date.toISOString().slice(0, 10);
+  const timePart = /^\d{1,2}:\d{2}$/.test(game.timeFormat ?? "") ? game.timeFormat! : "00:00";
+  const parsed = new Date(`${datePart}T${timePart}:00+03:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function headerStatus(header: KhlGameHeader): "LIVE" | "FINISHED" | null {
   const status = header.status?.toLowerCase() ?? "";
   if (/заверш|окончен|finished|final/.test(status)) return "FINISHED";
-  if (header.period || header.time || header.goals?.length || header.score) {
-    return "LIVE";
-  }
+  if (
+    header.period || header.time || header.goals?.length ||
+    Number.isFinite(Number(header.score?.home)) ||
+    Number.isFinite(Number(header.score?.away))
+  ) return "LIVE";
   return null;
 }
 
@@ -144,7 +155,12 @@ export async function syncLiveGames(fetchHeader: (gameId: number) => Promise<Khl
       continue;
     }
     const { game, header } = result.value;
-    const status = headerStatus(header);
+    const headerLive = headerStatus(header);
+    const start = gameStartMoscow(game);
+    const startPassed = start !== null && Date.now() >= start.getTime() + 5 * 60 * 1000;
+
+    // Время начала прошло (с запасом 5 минут), а игра всё ещё SCHEDULED — переводим в LIVE
+    const status = headerLive ?? (startPassed && game.status === "SCHEDULED" && header.status ? "LIVE" : null);
     const homeScore = Number(header.score?.home);
     const visitorScore = Number(header.score?.away);
     await prisma.game.update({

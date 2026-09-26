@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { TeamLogo } from "./TeamLogo";
 import { TeamStatsLine } from "./TeamStatsLine";
 import type { Game, StandingsTeam } from "@/lib/types";
-import { overtimeLabel, formatShortDate, liveStatusLabel } from "@/lib/format";
+import { overtimeLabel, formatShortDate } from "@/lib/format";
 import { colors } from "@/lib/theme";
 
 function TeamBlock({
@@ -156,7 +156,7 @@ export function GameRow({
                 </span>
                 {(game.liveStatus || game.liveClock) && (
                   <span style={{ fontFamily: "var(--font-body)", color: colors.muted, fontSize: "0.68rem" }}>
-                    {liveStatusLabel(game.liveStatus, game.livePeriod) ?? ""}{game.liveClock ? ` · ${game.liveClock}` : ""}
+                    {game.liveStatus}
                   </span>
                 )}
               </>

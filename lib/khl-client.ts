@@ -80,6 +80,12 @@ export type RawKhlGameHeader = KhlGameHeader & {
       assist_2?: { name?: string };
     }>>;
   };
+  isOnline?: boolean;
+  online?: {
+    status?: string;
+    homeScore?: number;
+    visitorScore?: number;
+  }
 };
 
 export type KhlGameHeaderResponse = RawKhlGameHeader | {
@@ -104,15 +110,17 @@ export function normalizeGameHeader(raw: RawKhlGameHeader): KhlGameHeader {
       score: `${goal.scoreA ?? ""}:${goal.scoreB ?? ""}`,
     }));
 
+  // в normalizeGameHeader:
   return {
     id: raw.game.id,
     status: raw.showstatus,
+    period: raw.period,
+    time: raw.time,
     arena: raw.game.arena,
-    score: {
-      home: raw.game.homeScore,
-      away: raw.game.visitorScore,
-    },
-    goals,
+    goals: goals.length > 0 ? goals : undefined,
+    score: raw.game.homeScore != null || raw.game.visitorScore != null
+      ? { home: raw.game.homeScore, away: raw.game.visitorScore }
+      : { home: raw.online?.homeScore, away: raw.online?.visitorScore }
   };
 }
 

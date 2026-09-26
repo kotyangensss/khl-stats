@@ -1,0 +1,27 @@
+{
+  "name": "khl-live-poller",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "cf-typegen": "wrangler types",
+    "contract:emit": "prisma contract emit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260926.1",
+    "@prisma/cli-engine": "^0.6.1",
+    "@types/node": "^26.6.2",
+    "prisma": "^7.10.0",
+    "typescript": "^5.5.2",
+    "wrangler": "^4.141.0"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@prisma/orm-postgres": "^8.0.0-rc.12",
+    "dotenv": "^18.0.4"
+  }
+}

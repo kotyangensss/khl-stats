@@ -34,18 +34,6 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
   }
 
   useEffect(() => {
-    const params = new URLSearchParams({ scope: tab, page: String(page) });
-    let cancelled = false;
-    const load = () => fetch(`/api/games?${params.toString()}`)
-      .then((res) => { if (!res.ok) throw new Error("Не удалось загрузить расписание"); return res.json() as Promise<GamesResponse>; })
-      .then((json) => { if (!cancelled) { setError(null); setData(json); } })
-      .catch((e: Error) => { if (!cancelled) setError(e.message); });
-    load();
-    const timer = window.setInterval(load, 180_000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [tab, page]);
-
-  useEffect(() => {
     const loadStandings = () => fetch("/api/standings")
       .then((res) => res.json() as Promise<StandingsData>)
       .then((json) => setStandings(json.teamsById))

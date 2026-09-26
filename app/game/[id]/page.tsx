@@ -6,7 +6,7 @@ import { getStandingsSafe } from "@/lib/standings";
 import { TeamLogo } from "@/components/TeamLogo";
 import { GameRow } from "@/components/GameRow";
 import type { Game } from "@/lib/types";
-import { overtimeLabel, formatDayHeading, liveStatusLabel } from "@/lib/format";
+import { overtimeLabel, formatDayHeading } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { TeamStatsLine } from "@/components/TeamStatsLine";
@@ -222,7 +222,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 </div>
                 {(game.liveStatus || game.liveClock) && (
                   <div style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", marginTop: "0.5rem" }}>
-                    {liveStatusLabel(game.liveStatus, game.livePeriod) ?? ""}{game.liveClock ? ` · ${game.liveClock}` : ""}
+                    {game.liveStatus}
                   </div>
                 )}
               </>
