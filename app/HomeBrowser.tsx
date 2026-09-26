@@ -46,16 +46,16 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
   // а свежесть всё равно подтверждается фоновым fetch (stale-while-revalidate).
   const cacheRef = useRef<Map<string, GamesResponse>>(new Map([[cacheKey(initialData.scope, initialData.page), initialData]]));
 
+  const [view, setView] = useState<{ tab: Tab; page: number }>({ tab, page });
+
   function setUrl(nextTab: Tab, nextPage: number) {
-    const cached = cacheRef.current.get(cacheKey(nextTab, nextPage));
-    if (cached) {
-      // Есть в кэше — показываем сразу, без ожидания сети.
-      setData(cached);
-      setError(null);
-    }
+    setView({ tab: nextTab, page: nextPage }); // мгновенно
     const params = new URLSearchParams({ tab: nextTab, page: String(nextPage) });
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
+
+  // синхронизация при назад/вперёд браузера
+  useEffect(() => { setView({ tab, page }); }, [tab, page]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +87,7 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
     let cancelled = false;
     fetchGames(otherTab, 1)
       .then((json) => { if (!cancelled) cacheRef.current.set(key, json); })
-      .catch(() => {});
+      .catch(() => { });
     return () => { cancelled = true; };
   }, [tab]);
 
@@ -95,7 +95,7 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
     const loadStandings = () => fetch("/api/standings")
       .then((res) => res.json() as Promise<StandingsData>)
       .then((json) => setStandings(json.teamsById))
-      .catch(() => {});
+      .catch(() => { });
     loadStandings();
     const timer = window.setInterval(loadStandings, 300_000);
     return () => window.clearInterval(timer);
