@@ -14,11 +14,6 @@ import { teamColors } from "@/lib/team-colors";
 
 export const revalidate = 30;
 
-export async function generateStaticParams() {
-  const games = await prisma.game.findMany({ select: { id: true } });
-  return games.map((game) => ({ id: String(game.id) }));
-}
-
 function toGame(
   g: Omit<Game, "date" | "liveUpdatedAt"> & {
     date: Date;
