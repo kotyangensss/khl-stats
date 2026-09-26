@@ -142,26 +142,39 @@ async function fetchCalendar(session: Session): Promise<KhlCalendarResponse> {
 }
 
 async function fetchStandings(session: Session): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/rest/standings/regular/`, {
-    method: "POST",
-    redirect: "manual",
-    headers: {
-      Accept: "*/*",
-      "Accept-Language": "ru-RU,ru;q=0.9",
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "User-Agent": USER_AGENT,
-      "X-Requested-With": "XMLHttpRequest",
-      Origin: BASE_URL,
-      Referer: `${BASE_URL}/`,
-      Cookie: session.cookie,
-    },
-    body: new URLSearchParams({ "values[type]": "regular", sessid: session.sessid }).toString(),
-  });
+  const doFetch = (sess: Session) =>
+    fetch(`${BASE_URL}/rest/standings/regular/`, {
+      method: "POST",
+      // redirect НЕ задаём: по умолчанию fetch сам проходит 3xx-цепочку
+      headers: {
+        Accept: "*/*",
+        "Accept-Language": "ru-RU,ru;q=0.9",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "User-Agent": USER_AGENT,
+        "X-Requested-With": "XMLHttpRequest",
+        Origin: BASE_URL,
+        Referer: `${BASE_URL}/`,
+        Cookie: sess.cookie,
+      },
+      body: new URLSearchParams({ "values[type]": "regular", sessid: sess.sessid }).toString(),
+    });
+
+  let response = await doFetch(session);
+
+  // 307 мог быть про истёкший sessid — одна повторная попытка со свежей сессией
+  if (response.status >= 300 && response.status < 400) {
+    const fresh = await getSession();
+    response = await doFetch(fresh);
+  }
 
   if (!response.ok) throw new Error(`standings: ${response.status}`);
-  return response.json();
-}
 
+  const json = (await response.json()) as { status?: string };
+  if (json.status && json.status !== "success") {
+    throw new Error(`standings вернул статус "${json.status}"`);
+  }
+  return json;
+}
 // ---- Продублировано из lib/standings.ts ----
 
 interface StandingsTeam {
