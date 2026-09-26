@@ -367,26 +367,35 @@ export async function runFullSync(env: Env): Promise<void> {
 
     const { TEAMS, ARENAS } = calendar.data;
 
-    await prisma.$transaction([
-      ...Object.entries(TEAMS)
-        .filter(([id]) => id !== "0")
-        .map(([id, team]) =>
-          prisma.team.upsert({
-            where: { id: Number(id) },
-            create: { id: Number(id), name: team.NAME, logoUrl: team.LOGO },
-            update: { name: team.NAME, logoUrl: team.LOGO },
-          })
-        ),
-      ...Object.entries(ARENAS)
-        .filter(([id, city]) => id !== "0" && city !== "")
-        .map(([id, city]) =>
-          prisma.arena.upsert({
-            where: { id: Number(id) },
-            create: { id: Number(id), city },
-            update: { city },
-          })
-        ),
-    ]);
+    // Команды и арены: upsert-ы атомарны по отдельности, транзакция не нужна.
+    // Гонка с параллельным запуском крона не критична: upsert идемпотентен.
+    const teamOps = Object.entries(TEAMS)
+      .filter(([id]) => id !== "0")
+      .map(([id, team]) =>
+        prisma.team.upsert({
+          where: { id: Number(id) },
+          create: { id: Number(id), name: team.NAME, logoUrl: team.LOGO },
+          update: { name: team.NAME, logoUrl: team.LOGO },
+        })
+      );
+
+    const arenaOps = Object.entries(ARENAS)
+      .filter(([id, city]) => id !== "0" && city !== "")
+      .map(([id, city]) =>
+        prisma.arena.upsert({
+          where: { id: Number(id) },
+          create: { id: Number(id), city },
+          update: { city },
+        })
+      );
+
+    // Пачками по 10, чтобы не открывать десятки соединений одновременно
+    for (let i = 0; i < teamOps.length; i += 10) {
+      await Promise.all(teamOps.slice(i, i + 10));
+    }
+    for (let i = 0; i < arenaOps.length; i += 10) {
+      await Promise.all(arenaOps.slice(i, i + 10));
+    }
 
     const games = flattenGames(calendar.data.GAMES);
 
