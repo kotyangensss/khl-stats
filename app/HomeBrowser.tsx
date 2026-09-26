@@ -34,6 +34,11 @@ function HomeContent({ initialData, initialStandings }: { initialData: GamesResp
   }
 
   useEffect(() => {
+    setData(initialData);
+    setError(null);
+  }, [initialData]);
+
+  useEffect(() => {
     const loadStandings = () => fetch("/api/standings")
       .then((res) => res.json() as Promise<StandingsData>)
       .then((json) => setStandings(json.teamsById))

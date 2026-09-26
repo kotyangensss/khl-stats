@@ -106,7 +106,7 @@ function gameStartMoscow(date: Date, timeFormat: string | null): Date | null {
 function nextQuarterHourAlarm(from: Date): Date {
   const candidate = new Date(from);
   const currentQuarterMinute = Math.floor(from.getUTCMinutes() / 15) * 15;
-  candidate.setUTCMinutes(currentQuarterMinute, 5, 0);
+  candidate.setUTCMinutes(currentQuarterMinute, 20, 0);
 
   if (candidate.getTime() <= from.getTime()) {
     candidate.setUTCMinutes(candidate.getUTCMinutes() + 15);
@@ -256,8 +256,9 @@ export class LivePoller extends DurableObject<Env> {
     try {
       const now = new Date();
       const windowStart = new Date(now);
-      windowStart.setUTCDate(windowStart.getUTCDate() - 1);
-      const windowEnd = new Date(now);
+      windowStart.setUTCHours(0, 0, 0, 0);
+
+      const windowEnd = new Date(windowStart);
       windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
 
       const candidates = await prisma.game.findMany({
@@ -281,10 +282,6 @@ export class LivePoller extends DurableObject<Env> {
           console.log(`  -> skip: ещё не начался`);
           continue;
         }
-        if (startsAt && now.getTime() > startsAt.getTime() + 4 * 60 * 60 * 1000) {
-          console.log(`  -> skip: слишком давно должен был закончиться`);
-          continue;
-        }
 
         console.log(`  -> запрашиваю game/header`);
         let rawResponse: KhlGameHeaderResponse;
@@ -299,13 +296,16 @@ export class LivePoller extends DurableObject<Env> {
         console.log(`  -> isOnline=${header?.isOnline}`);
         if (!header) continue;
 
-        const isLive = Boolean(header.isOnline);
         const normalized = normalizeGameHeader(header);
+
+        // isOnline undefined => false, явно
+        const isLive = header.isOnline ?? false;
+        const isFinished = !isLive && /заверш|оконч/i.test(normalized.status ?? "");
 
         await prisma.game.update({
           where: { id: candidate.id },
           data: {
-            ...(isLive ? { status: "LIVE" as const } : {}),
+            status: isLive ? "LIVE" : isFinished ? "FINISHED" : "SCHEDULED",
             ...(normalized.score?.home != null ? { homeScore: Number(normalized.score.home) } : {}),
             ...(normalized.score?.away != null ? { visitorScore: Number(normalized.score.away) } : {}),
             liveStatus: normalized.status ?? null,
