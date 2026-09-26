@@ -14,7 +14,17 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36";
 
 const LIVE_DELAY_MS = 12_000;
-const IDLE_DELAY_MS = 180_000;
+const PERIOD_SECONDS = 20 * 60;
+
+type LegendEntry = {
+  type: string;
+  time?: number | string;
+  timems?: string;
+  action?: string;
+  period?: string;
+};
+
+type GameLegend = Record<string, LegendEntry[]>;
 
 type LiveGameEvent = {
   period: number;
@@ -45,6 +55,9 @@ type RawKhlGameHeader = KhlGameHeader & {
     visitorScore?: number;
     scP?: string[];
     score?: string;
+    tab_playbyplay?: {
+      gameLegend?: GameLegend;
+    };
   };
   proto?: {
     goals?: Record<string, Array<{
@@ -113,6 +126,38 @@ function nextQuarterHourAlarm(from: Date): Date {
   }
 
   return candidate;
+}
+
+/** По tab_playbyplay.gameLegend определяет текущий период и время внутри
+ * него (обратный отсчёт от 20:00), либо что сейчас перерыв. */
+function getLiveClockFromLegend(
+  gameLegend: GameLegend | undefined
+): { period: number; clock: string | null; isIntermission: boolean } | null {
+  if (!gameLegend) return null;
+
+  const periodKeys = Object.keys(gameLegend)
+    .map(Number)
+    .filter((n) => !Number.isNaN(n));
+  if (periodKeys.length === 0) return null;
+
+  const currentPeriod = Math.max(...periodKeys);
+  const entries = gameLegend[String(currentPeriod)];
+  const top = entries?.[0];
+  if (!top) return null;
+
+  if (top.type === "period" && top.action === "1") {
+    return { period: currentPeriod, clock: null, isIntermission: true };
+  }
+
+  if (typeof top.time !== "number") return null;
+
+  const secondsIntoPeriod = top.time - (currentPeriod - 1) * PERIOD_SECONDS;
+  const remaining = Math.max(0, PERIOD_SECONDS - secondsIntoPeriod);
+  const mm = Math.floor(remaining / 60);
+  const ss = remaining % 60;
+  const clock = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+
+  return { period: currentPeriod, clock, isIntermission: false };
 }
 
 
@@ -301,6 +346,9 @@ export class LivePoller extends DurableObject<Env> {
         // isOnline undefined => false, явно
         const isLive = header.isOnline ?? false;
         const isFinished = !isLive && /заверш|оконч/i.test(normalized.status ?? "");
+        const legendClock = isLive
+          ? getLiveClockFromLegend(header.game?.tab_playbyplay?.gameLegend)
+          : null;
 
         await prisma.game.update({
           where: { id: candidate.id },
@@ -308,6 +356,12 @@ export class LivePoller extends DurableObject<Env> {
             status: isLive ? "LIVE" : isFinished ? "FINISHED" : "SCHEDULED",
             ...(normalized.score?.home != null ? { homeScore: Number(normalized.score.home) } : {}),
             ...(normalized.score?.away != null ? { visitorScore: Number(normalized.score.away) } : {}),
+            ...(isLive && legendClock 
+              ? {
+                livePeriod: legendClock.period,
+                liveClock: legendClock.isIntermission ? null : legendClock.clock,
+              }
+              : {}),
             liveStatus: normalized.status ?? null,
             livePeriod: normalized.period ?? null,
             liveClock: normalized.time ?? null,
