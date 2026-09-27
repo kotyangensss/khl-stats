@@ -156,6 +156,7 @@ export function GameRow({
                 </span>
                 {(game.liveStatus || game.liveClock) && (
                   <span style={{ fontFamily: "var(--font-body)", color: colors.muted, fontSize: "0.68rem" }}>
+                    {game.liveClock}
                     {game.liveStatus}
                   </span>
                 )}

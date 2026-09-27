@@ -38,8 +38,6 @@ type LiveGameEvent = {
 type KhlGameHeader = {
   id: number;
   status?: string;
-  period?: number;
-  time?: string;
   arena?: string;
   score?: { home?: number | string; away?: number | string };
   goals?: LiveGameEvent[];
@@ -98,8 +96,6 @@ function normalizeGameHeader(raw: RawKhlGameHeader): KhlGameHeader {
   return {
     id: raw.game.id,
     status: raw.showstatus,
-    period: raw.period,
-    time: raw.time,
     arena: raw.game.arena,
     goals: goals.length > 0 ? goals : undefined,
     score: raw.game.homeScore != null || raw.game.visitorScore != null
@@ -363,8 +359,6 @@ export class LivePoller extends DurableObject<Env> {
               }
               : {}),
             liveStatus: normalized.status ?? null,
-            livePeriod: normalized.period ?? null,
-            liveClock: normalized.time ?? null,
             liveEvents: normalized.goals ?? undefined,
             liveUpdatedAt: new Date(),
           },
