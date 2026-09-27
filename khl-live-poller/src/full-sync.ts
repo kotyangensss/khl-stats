@@ -1,18 +1,17 @@
 // ============================================================
-// src/full-sync.ts — замена app/api/sync/route.ts + sync.yml.
-// Запускается по Cron Trigger раз в 30 минут (см. scheduled() в index.ts).
+// Фулл-синк без Prisma: голый SQL через Hyperdrive (pg).
 //
-// getSession/fetchCalendar/fetchStandings и вся логика записи
-// команд/арен/игр перенесены 1-в-1 из app/api/sync/route.ts + lib/sync.ts
-// + lib/khl-client.ts (flattenGames, mapGameStatus, gameStartUtc).
+// ВАЖНО про имена колонок: Prisma по умолчанию НЕ переименовывает
+// поля в snake_case — колонки в Postgres называются точно как поля
+// моделей (camelCase в кавычках): "logoUrl", "homeScore",
+// "periodScores", "gamesPlayed" и т.д. Именно так их и пишем.
 //
-// TODO: запись турнирной таблицы (saveStandingsToDb из lib/standings.ts)
-// пока не перенесена — жду содержимое этой функции, чтобы не гадать
-// структуру апсерта StandingsRow вслепую.
+// Запуск: scheduled() в index.ts по cron */30 * * * *
+// (или локально: wrangler dev --test-scheduled + curl
+//  "http://localhost:8787/__scheduled?cron=*/30+*+*+*+*")
 // ============================================================
 
-import { PrismaClient, type Prisma } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Client } from "pg";
 import type { Env } from "./live-poller";
 
 const BASE_URL = "https://www.khl.ru";
@@ -21,7 +20,7 @@ const USER_AGENT =
 
 type Session = { cookie: string; sessid: string };
 
-// ---- Продублировано из lib/khl-client.ts ----
+// ---- Типы ответов khl.ru (только нужное) ----
 
 interface RawGame {
   id: number;
@@ -51,37 +50,9 @@ interface KhlCalendarResponse {
     ARENAS: Record<string, string>;
     GAMES: Array<Record<string, RawGame[]>>;
   };
-  errors: unknown[];
 }
 
-/** Разворачивает GAMES (массив объектов по датам) в плоский список игр */
-function flattenGames(games: KhlCalendarResponse["data"]["GAMES"]): RawGame[] {
-  const flat: RawGame[] = [];
-  for (const dayBucket of games) {
-    for (const gamesOnDate of Object.values(dayBucket)) {
-      if (Array.isArray(gamesOnDate)) flat.push(...gamesOnDate);
-    }
-  }
-  return flat;
-}
-
-function gameStartUtc(game: RawGame): Date | null {
-  if (!game.date) return null;
-  const datePart = game.date.slice(0, 10);
-  const timePart = /^\d{1,2}:\d{2}$/.test(game.time_format ?? "") ? game.time_format : "00:00";
-  const parsed = new Date(`${datePart}T${timePart}:00+03:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function mapGameStatus(game: RawGame): "SCHEDULED" | "LIVE" | "FINISHED" {
-  if (game.approved === 1) return "FINISHED";
-  if (Number(game.homeScore) > 0 || Number(game.visitorScore) > 0) return "LIVE";
-  const start = gameStartUtc(game);
-  if (start && Date.now() > start.getTime() + 5 * 60 * 1000) return "LIVE";
-  return "SCHEDULED";
-}
-
-// ---- Сессия (без кэша — при интервале 30 мин кэш с TTL 8 мин бессмысленен) ----
+// ---- Сессия ----
 
 async function getSession(): Promise<Session> {
   let url = `${BASE_URL}/`;
@@ -117,10 +88,8 @@ async function getSession(): Promise<Session> {
   return { cookie: cookieJar.join("; "), sessid: match[1] };
 }
 
-// ---- Перенесено 1-в-1 из app/api/sync/route.ts ----
-
-async function fetchCalendar(session: Session): Promise<KhlCalendarResponse> {
-  const response = await fetch(`${BASE_URL}/rest/calendar/list/`, {
+async function postKhl(path: string, session: Session, body: Record<string, string>) {
+  const response = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
     headers: {
       Accept: "*/*",
@@ -132,52 +101,255 @@ async function fetchCalendar(session: Session): Promise<KhlCalendarResponse> {
       Referer: `${BASE_URL}/`,
       Cookie: session.cookie,
     },
-    body: new URLSearchParams({ sessid: session.sessid }).toString(),
+    body: new URLSearchParams(body).toString(),
   });
-
-  if (!response.ok) throw new Error(`calendar/list: ${response.status}`);
-  const json = (await response.json()) as KhlCalendarResponse;
-  if (json.status !== "success") throw new Error(`calendar/list вернул статус "${json.status}"`);
-  return json;
+  if (!response.ok) throw new Error(`${path}: ${response.status}`);
+  return response.json();
 }
 
-async function fetchStandings(session: Session): Promise<unknown> {
-  const doFetch = (sess: Session) =>
-    fetch(`${BASE_URL}/rest/standings/regular/`, {
-      method: "POST",
-      // redirect НЕ задаём: по умолчанию fetch сам проходит 3xx-цепочку
-      headers: {
-        Accept: "*/*",
-        "Accept-Language": "ru-RU,ru;q=0.9",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "User-Agent": USER_AGENT,
-        "X-Requested-With": "XMLHttpRequest",
-        Origin: BASE_URL,
-        Referer: `${BASE_URL}/`,
-        Cookie: sess.cookie,
-      },
-      body: new URLSearchParams({ "values[type]": "regular", sessid: sess.sessid }).toString(),
-    });
+// ---- Маппинг статусов (1-в-1 из lib/khl-client.ts) ----
 
-  let response = await doFetch(session);
-
-  // 307 мог быть про истёкший sessid — одна повторная попытка со свежей сессией
-  if (response.status >= 300 && response.status < 400) {
-    const fresh = await getSession();
-    response = await doFetch(fresh);
-  }
-
-  if (!response.ok) throw new Error(`standings: ${response.status}`);
-
-  const json = (await response.json()) as { status?: string };
-  if (json.status && json.status !== "success") {
-    throw new Error(`standings вернул статус "${json.status}"`);
-  }
-  return json;
+function gameStartUtc(game: RawGame): Date | null {
+  if (!game.date) return null;
+  const datePart = game.date.slice(0, 10);
+  const timePart = /^\d{1,2}:\d{2}$/.test(game.time_format ?? "") ? game.time_format : "00:00";
+  const parsed = new Date(`${datePart}T${timePart}:00+03:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
-// ---- Продублировано из lib/standings.ts ----
 
-interface StandingsTeam {
+function mapGameStatus(game: RawGame): "SCHEDULED" | "LIVE" | "FINISHED" {
+  if (game.approved === 1) return "FINISHED";
+  if (Number(game.homeScore) > 0 || Number(game.visitorScore) > 0) return "LIVE";
+  const start = gameStartUtc(game);
+  if (start && Date.now() > start.getTime() + 5 * 60 * 1000) return "LIVE";
+  return "SCHEDULED";
+}
+
+function flattenGames(games: KhlCalendarResponse["data"]["GAMES"]): RawGame[] {
+  const flat: RawGame[] = [];
+  for (const dayBucket of games) {
+    for (const gamesOnDate of Object.values(dayBucket)) {
+      if (Array.isArray(gamesOnDate)) flat.push(...gamesOnDate);
+    }
+  }
+  return flat;
+}
+
+// ---- Безопасный парсинг чисел из khl.ru ----
+// khl.ru отдаёт числовые поля строками, и иногда они пустые/битые.
+// Number(undefined) даёт NaN, который pg отказывается писать в integer
+// (SQLSTATE 22P02 "invalid input syntax for type integer").
+
+function toIntOrNull(value: unknown): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+// ---- Дельта-запросы ----
+
+async function syncTeamsAndArenas(client: Client, calendar: KhlCalendarResponse) {
+  const { TEAMS, ARENAS } = calendar.data;
+
+  const dbTeams = await client.query<{ id: number; name: string; logoUrl: string | null }>(
+    'SELECT id, name, "logoUrl" FROM "Team"'
+  );
+  const dbArenas = await client.query<{ id: number; city: string }>(
+    'SELECT id, city FROM "Arena"'
+  );
+
+  const teamsById = new Map(dbTeams.rows.map((t) => [t.id, t]));
+  const arenasById = new Map(dbArenas.rows.map((a) => [a.id, a]));
+
+  // Команды: только новые/изменённые
+  const teamValues: unknown[][] = [];
+  for (const [idStr, team] of Object.entries(TEAMS)) {
+    const id = Number(idStr);
+    if (idStr === "0" || !id) continue;
+    const existing = teamsById.get(id);
+    if (existing && existing.name === team.NAME && existing.logoUrl === team.LOGO) continue;
+    teamValues.push([id, team.NAME, team.LOGO ?? null]);
+  }
+
+  if (teamValues.length > 0) {
+    const chunks = teamValues.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(", ");
+    await client.query(
+      `INSERT INTO "Team" (id, name, "logoUrl") VALUES ${chunks}
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, "logoUrl" = EXCLUDED."logoUrl"`,
+      teamValues.flat()
+    );
+  }
+
+  // Арены — аналогично
+  const arenaValues: unknown[][] = [];
+  for (const [idStr, city] of Object.entries(ARENAS)) {
+    const id = Number(idStr);
+    if (idStr === "0" || !id || !city) continue;
+    const existing = arenasById.get(id);
+    if (existing && existing.city === city) continue;
+    arenaValues.push([id, city]);
+  }
+
+  if (arenaValues.length > 0) {
+    const chunks = arenaValues.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ");
+    await client.query(
+      `INSERT INTO "Arena" (id, city) VALUES ${chunks}
+       ON CONFLICT (id) DO UPDATE SET city = EXCLUDED.city`,
+      arenaValues.flat()
+    );
+  }
+
+  return { teams: teamValues.length, arenas: arenaValues.length };
+}
+
+async function syncGames(client: Client, games: RawGame[]): Promise<{ created: number; updated: number; skipped: number }> {
+  if (games.length === 0) return { created: 0, updated: 0, skipped: 0 };
+
+  // Игры с битыми teama/teamb записать нельзя (NOT NULL + FK на Team) —
+  // пропускаем их с логом, остальные обрабатываем.
+  const validGames: RawGame[] = [];
+  let invalidGames = 0;
+  for (const game of games) {
+    if (toIntOrNull(game.teama) == null || toIntOrNull(game.teamb) == null) {
+      invalidGames++;
+      console.warn(
+        `[full-sync] игра ${game.id} пропущена: некорректные teama/teamb (${JSON.stringify(game.teama)}/${JSON.stringify(game.teamb)})`
+      );
+      continue;
+    }
+    validGames.push(game);
+  }
+
+  const ids = validGames.map((g) => g.id);
+  const dbGames = await client.query<{
+    id: number;
+    date: Date;
+    timeFormat: string | null;
+    status: string;
+    homeScore: number | null;
+    visitorScore: number | null;
+    periodScores: unknown;
+    overtime: string | null;
+    winnerTeamId: number | null;
+  }>(
+    `SELECT id, date, "timeFormat", status, "homeScore", "visitorScore",
+            "periodScores", overtime, "winnerTeamId"
+     FROM "Game" WHERE id = ANY($1)`,
+    [ids]
+  );
+  const dbById = new Map(dbGames.rows.map((g) => [g.id, g]));
+
+  const toInsert: RawGame[] = [];
+  const toUpdate: RawGame[] = [];
+  let skipped = 0;
+
+  for (const game of validGames) {
+    const existing = dbById.get(game.id);
+    if (!existing) {
+      toInsert.push(game);
+      continue;
+    }
+
+    const dateChanged = new Date(game.date).getTime() !== new Date(existing.date).getTime();
+    const timeChanged = game.time_format !== existing.timeFormat;
+    const statusChanged = mapGameStatus(game) !== existing.status;
+    const homeChanged = toIntOrNull(game.homeScore) !== existing.homeScore;
+    const visitorChanged = toIntOrNull(game.visitorScore) !== existing.visitorScore;
+    const otChanged = (game.ots || null) !== existing.overtime;
+    const winChanged = toIntOrNull(game.win) !== existing.winnerTeamId;
+    const periodChanged = JSON.stringify(game.scP ?? null) !== JSON.stringify(existing.periodScores ?? null);
+
+    if (dateChanged || timeChanged || statusChanged || homeChanged || visitorChanged || otChanged || winChanged || periodChanged) {
+      toUpdate.push(game);
+    } else {
+      skipped++;
+    }
+  }
+
+  // Новые игры — batch-INSERT пачками по 200 (лимит параметров 65535 / 12 колонок)
+  for (let i = 0; i < toInsert.length; i += 200) {
+    const batch = toInsert.slice(i, i + 200);
+    const values: unknown[] = [];
+    const chunks = batch.map((_, j) => {
+      const b = j * 12;
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}::"GameStatus", $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}::jsonb, $${b + 12}, now(), now())`;
+    }).join(", ");
+
+    for (const game of batch) {
+      values.push(
+        toIntOrNull(game.id),
+        toIntOrNull(game.tnId),
+        new Date(game.date),
+        game.time_format,
+        mapGameStatus(game),
+        toIntOrNull(game.teama),
+        toIntOrNull(game.teamb),
+        toIntOrNull(game.arenaid),
+        toIntOrNull(game.homeScore),
+        toIntOrNull(game.visitorScore),
+        game.scP ? JSON.stringify(game.scP) : null,
+        toIntOrNull(game.win)
+      );
+    }
+
+    await client.query(
+      `INSERT INTO "Game" (
+         id, "tnId", date, "timeFormat", status,
+         "teamAId", "teamBId", "arenaId",
+         "homeScore", "visitorScore", "periodScores", "winnerTeamId", "updatedAt", "createdAt"
+       ) VALUES ${chunks}
+       ON CONFLICT (id) DO NOTHING`,
+      values
+    );
+  }
+
+  // Изменённые — построчные UPDATE через одно соединение
+  for (const game of toUpdate) {
+    await client.query(
+      `UPDATE "Game" SET
+         date = $2,
+         "timeFormat" = $3,
+         status = $4::"GameStatus",
+         "homeScore" = $5,
+         "visitorScore" = $6,
+         "periodScores" = $7::jsonb,
+         overtime = $8,
+         "winnerTeamId" = $9,
+         "updatedAt" = now()
+       WHERE id = $1`,
+      [
+        toIntOrNull(game.id),
+        new Date(game.date),
+        game.time_format,
+        mapGameStatus(game),
+        toIntOrNull(game.homeScore),
+        toIntOrNull(game.visitorScore),
+        game.scP ? JSON.stringify(game.scP) : null,
+        game.ots || null,
+        toIntOrNull(game.win),
+      ]
+    );
+  }
+
+  return { created: toInsert.length, updated: toUpdate.length, skipped };
+}
+
+// ---- Standings ----
+
+function numberValue(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function goalsValue(value: unknown): [number, number] {
+  if (typeof value === "string") {
+    const [scored, conceded] = value.split("-").map(numberValue);
+    return [scored, conceded];
+  }
+  return [0, 0];
+}
+
+interface StandingsTeamRow {
   id: number;
   name: string;
   logoUrl: string | null;
@@ -198,36 +370,10 @@ interface StandingsTeam {
   playoff: boolean;
 }
 
-interface StandingsGroup {
-  conference: string;
-  division: string;
-  teams: StandingsTeam[];
-}
-
-interface StandingsData {
-  overall: StandingsGroup;
-  conferenceGroups: StandingsGroup[];
-  groups: StandingsGroup[];
-  teamsById: Record<number, StandingsTeam>;
-}
-
-function numberValue(value: unknown): number {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function goalsValue(value: unknown): [number, number] {
-  if (typeof value === "string") {
-    const [scored, conceded] = value.split("-").map(numberValue);
-    return [scored, conceded];
-  }
-  return [0, 0];
-}
-
-function normalizeTeam(
+function normalizeStandingsTeam(
   raw: Record<string, unknown>,
-  group: Pick<StandingsGroup, "conference" | "division">
-): StandingsTeam {
+  group: { conference: string; division: string }
+): StandingsTeamRow {
   const stats = (raw.stats ?? raw.s ?? {}) as Record<string, unknown>;
   const [goalsFor, goalsAgainst] = goalsValue(stats.goals ?? stats.g);
   const id = numberValue(raw.id ?? raw.clubid);
@@ -255,10 +401,12 @@ function normalizeTeam(
   };
 }
 
-function normalizeStandings(payload: unknown): StandingsData {
-  const response = payload as { data?: { json?: { divisions?: unknown[] } } };
-  const divisions = response.data?.json?.divisions;
+async function syncStandings(client: Client, standingsRaw: unknown): Promise<number> {
+  const response = standingsRaw as { data?: { json?: Record<string, unknown> } };
+  const json = response.data?.json;
+  if (!json) return 0;
 
+  const leagueRows = (json as { league?: Record<string, { rows?: unknown[] }> }).league?.["0"]?.rows;
   const conferenceByDivision: Record<string, string> = {
     bobrov: "Западная конференция",
     tarasov: "Западная конференция",
@@ -271,210 +419,115 @@ function normalizeStandings(payload: unknown): StandingsData {
     kharlamov: "Дивизион Харламова",
     chernyshev: "Дивизион Чернышева",
   };
+  const divisions = (json as { divisions?: Array<{ item?: string; rows?: unknown[] }> }).divisions ?? [];
 
-  const groups = (Array.isArray(divisions) ? divisions : []).flatMap((division) => {
-    if (!division || typeof division !== "object") return [];
-    const value = division as { item?: string; rows?: unknown[] };
-    const item = value.item ?? "";
+  const byId = new Map<number, StandingsTeamRow>();
+  for (const division of divisions) {
     const group = {
-      conference: conferenceByDivision[item] ?? "",
-      division: divisionNames[item] ?? item,
+      conference: conferenceByDivision[division.item ?? ""] ?? "",
+      division: divisionNames[division.item ?? ""] ?? division.item ?? "",
     };
-    const teams = (value.rows ?? [])
-      .filter((team): team is Record<string, unknown> => Boolean(team && typeof team === "object"))
-      .map((team) => normalizeTeam(team, group));
-    return teams.length > 0 ? [{ ...group, teams }] : [];
-  });
-
-  const byId = Object.fromEntries(groups.flatMap((group) => group.teams.map((team) => [team.id, team])));
-
-  const conferences =
-    response.data?.json &&
-    (response.data.json as { conferences?: Array<{ item?: string; rows?: unknown[] }> }).conferences;
-
-  const conferenceNames: Record<string, string> = {
-    west: "Западная конференция",
-    east: "Восточная конференция",
-  };
-
-  const conferenceGroups = (conferences ?? []).flatMap((conference) => {
-    const teams = (conference.rows ?? [])
-      .filter((team): team is Record<string, unknown> => Boolean(team && typeof team === "object"))
-      .map((team) => {
-        const normalized = normalizeTeam(team, {
-          conference: conferenceNames[conference.item ?? ""] ?? conference.item ?? "",
-          division: "",
-        });
-        return byId[normalized.id] ? { ...byId[normalized.id], rank: normalized.rank } : normalized;
-      });
-    return teams.length > 0
-      ? [{ conference: conferenceNames[conference.item ?? ""] ?? conference.item ?? "", division: "", teams }]
-      : [];
-  });
-
-  const leagueRows =
-    response.data?.json &&
-    (response.data.json as { league?: Record<string, { rows?: unknown[] }> }).league?.["0"]?.rows;
+    for (const raw of division.rows ?? []) {
+      if (raw && typeof raw === "object") {
+        const team = normalizeStandingsTeam(raw as Record<string, unknown>, group);
+        if (team.id > 0) byId.set(team.id, team);
+      }
+    }
+  }
 
   const overallTeams = (leagueRows ?? [])
-    .filter((team): team is Record<string, unknown> => Boolean(team && typeof team === "object"))
-    .map((team) => {
-      const normalized = normalizeTeam(team, { conference: "", division: "" });
-      const known = byId[normalized.id];
-      return known ? { ...known, rank: normalized.rank } : normalized;
-    })
-    .filter((team) => team.id > 0 && team.name.length > 0);
+    .filter((t): t is Record<string, unknown> => Boolean(t && typeof t === "object"))
+    .map((t) => normalizeStandingsTeam(t, { conference: "", division: "" }))
+    .filter((t) => t.id > 0 && t.name.length > 0);
 
-  return {
-    overall: { conference: "Общая таблица", division: "", teams: overallTeams },
-    conferenceGroups,
-    groups,
-    teamsById: Object.fromEntries(overallTeams.map((team) => [team.id, team])),
-  };
-}
+  const rows = overallTeams.map((t) => {
+    const known = byId.get(t.id);
+    return known ? { ...known, rank: t.rank } : t;
+  });
 
-async function saveStandingsToDb(prisma: PrismaClient, value: StandingsData): Promise<number> {
-  const rows = Object.values(value.teamsById);
-  await prisma.$transaction([
-    prisma.standingsRow.deleteMany(),
-    ...rows.map((team) =>
-      prisma.standingsRow.create({
-        data: {
-          teamId: team.id,
-          name: team.name,
-          logoUrl: team.logoUrl,
-          conference: team.conference,
-          division: team.division,
-          rank: team.rank,
-          gamesPlayed: team.gamesPlayed,
-          wins: team.wins,
-          otWins: team.otWins,
-          shootoutWins: team.shootoutWins,
-          shootoutLosses: team.shootoutLosses,
-          otLosses: team.otLosses,
-          losses: team.losses,
-          goalsFor: team.goalsFor,
-          goalsAgainst: team.goalsAgainst,
-          goalDiff: team.goalDiff,
-          points: team.points,
-          playoff: team.playoff,
-        },
-      })
-    ),
-  ]);
+  if (rows.length === 0) return 0;
+
+  const values: unknown[] = [];
+  const chunks = rows.map((_, i) => {
+    const b = i * 18;    
+    return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}, $${b + 13}, $${b + 14}, $${b + 15}, $${b + 16}, $${b + 17}, $${b + 18}::boolean, now())`;
+  }).join(", ");
+
+  for (const team of rows) {
+    values.push(
+      team.id, team.name, team.logoUrl,
+      team.conference, team.division, team.rank,
+      team.gamesPlayed, team.wins, team.otWins,
+      team.shootoutWins, team.shootoutLosses, team.otLosses,
+      team.losses, team.goalsFor, team.goalsAgainst,
+      team.goalDiff, team.points, team.playoff
+    );
+  }
+
+  await client.query(
+    `INSERT INTO "StandingsRow" (
+       "teamId", name, "logoUrl", conference, division, rank,
+       "gamesPlayed", wins, "otWins", "shootoutWins", "shootoutLosses", "otLosses",
+       losses, "goalsFor", "goalsAgainst", "goalDiff", points, playoff, "updatedAt"
+     ) VALUES ${chunks}
+     ON CONFLICT ("teamId") DO UPDATE SET
+       name = EXCLUDED.name,
+       "logoUrl" = EXCLUDED."logoUrl",
+       conference = EXCLUDED.conference,
+       division = EXCLUDED.division,
+       rank = EXCLUDED.rank,
+       "gamesPlayed" = EXCLUDED."gamesPlayed",
+       wins = EXCLUDED.wins,
+       "otWins" = EXCLUDED."otWins",
+       "shootoutWins" = EXCLUDED."shootoutWins",
+       "shootoutLosses" = EXCLUDED."shootoutLosses",
+       "otLosses" = EXCLUDED."otLosses",
+       losses = EXCLUDED.losses,
+       "goalsFor" = EXCLUDED."goalsFor",
+       "goalsAgainst" = EXCLUDED."goalsAgainst",
+       "goalDiff" = EXCLUDED."goalDiff",
+       points = EXCLUDED.points,
+       playoff = EXCLUDED.playoff,
+       "updatedAt" = now()`,
+    values
+  );
+
   return rows.length;
 }
 
-// ---- Перенесено 1-в-1 из lib/sync.ts::syncKhlData (без части про standings) ----
+// ---- Главная функция ----
 
 export async function runFullSync(env: Env): Promise<void> {
-  const adapter = new PrismaPg({ connectionString: env.HYPERDRIVE.connectionString });
-  const prisma = new PrismaClient({ adapter });
+  const client = new Client({ connectionString: env.HYPERDRIVE.connectionString });
+  await client.connect();
 
   try {
     const session = await getSession();
     const [calendar, standingsRaw] = await Promise.all([
-      fetchCalendar(session),
-      fetchStandings(session),
+      postKhl("/rest/calendar/list/", session, { sessid: session.sessid }),
+      postKhl("/rest/standings/regular/", session, {
+        "values[type]": "regular",
+        sessid: session.sessid,
+      }),
     ]);
 
-    const { TEAMS, ARENAS } = calendar.data;
-
-    // Команды и арены: upsert-ы атомарны по отдельности, транзакция не нужна.
-    // Гонка с параллельным запуском крона не критична: upsert идемпотентен.
-    const teamOps = Object.entries(TEAMS)
-      .filter(([id]) => id !== "0")
-      .map(([id, team]) =>
-        prisma.team.upsert({
-          where: { id: Number(id) },
-          create: { id: Number(id), name: team.NAME, logoUrl: team.LOGO },
-          update: { name: team.NAME, logoUrl: team.LOGO },
-        })
-      );
-
-    const arenaOps = Object.entries(ARENAS)
-      .filter(([id, city]) => id !== "0" && city !== "")
-      .map(([id, city]) =>
-        prisma.arena.upsert({
-          where: { id: Number(id) },
-          create: { id: Number(id), city },
-          update: { city },
-        })
-      );
-
-    // Пачками по 10, чтобы не открывать десятки соединений одновременно
-    for (let i = 0; i < teamOps.length; i += 10) {
-      await Promise.all(teamOps.slice(i, i + 10));
-    }
-    for (let i = 0; i < arenaOps.length; i += 10) {
-      await Promise.all(arenaOps.slice(i, i + 10));
+    const calendarData = calendar as KhlCalendarResponse;
+    if (calendarData.status !== "success") {
+      throw new Error(`calendar/list вернул статус "${calendarData.status}"`);
     }
 
-    const games = flattenGames(calendar.data.GAMES);
-
-    const existingIds = new Set(
-      (
-        await prisma.game.findMany({
-          where: { id: { in: games.map((game) => game.id) } },
-          select: { id: true },
-        })
-      ).map((game) => game.id)
-    );
-
-    let created = 0;
-    let updated = 0;
-
-    await Promise.all(
-      games.map(async (game) => {
-        const existed = existingIds.has(game.id);
-        await prisma.game.upsert({
-          where: { id: game.id },
-          create: {
-            id: game.id,
-            tnId: game.tnId,
-            date: new Date(game.date),
-            timeFormat: game.time_format,
-            status: mapGameStatus(game),
-            teamAId: game.teama,
-            teamBId: game.teamb,
-            arenaId: game.arenaid || null,
-            homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
-            visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
-            periodScores: (game.scP ?? undefined) as Prisma.InputJsonValue | undefined,
-            overtime: game.ots || null,
-            winnerTeamId: game.win || null,
-            venue: null,
-          },
-          update: {
-            date: new Date(game.date),
-            timeFormat: game.time_format,
-            status: mapGameStatus(game),
-            homeScore: game.homeScore !== "" ? Number(game.homeScore) : null,
-            visitorScore: game.visitorScore !== "" ? Number(game.visitorScore) : null,
-            periodScores: (game.scP ?? undefined) as Prisma.InputJsonValue | undefined,
-            overtime: game.ots || null,
-            winnerTeamId: game.win || null,
-          },
-        });
-        if (existed) updated++;
-        else created++;
-      })
-    );
-
-    let standingsTeams = 0;
-    try {
-      standingsTeams = await saveStandingsToDb(prisma, normalizeStandings(standingsRaw));
-    } catch (error) {
-      console.error("[full-sync] standings save failed:", error);
-    }
+    const teamStats = await syncTeamsAndArenas(client, calendarData);
+    const games = flattenGames(calendarData.data.GAMES);
+    const gameStats = await syncGames(client, games);
+    const standingsTeams = await syncStandings(client, standingsRaw);
 
     console.log(
-      `[full-sync] teams=${Object.keys(TEAMS).length} games=${games.length} created=${created} updated=${updated} standingsTeams=${standingsTeams}`
+      `[full-sync] games=${games.length} created=${gameStats.created} updated=${gameStats.updated} skipped=${gameStats.skipped} teams=${teamStats.teams} arenas=${teamStats.arenas} standingsTeams=${standingsTeams}`
     );
   } catch (error) {
     console.error("[full-sync] ошибка:", error);
     throw error;
   } finally {
-    await prisma.$disconnect();
+    await client.end();
   }
 }
