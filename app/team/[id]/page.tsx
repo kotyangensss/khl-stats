@@ -139,7 +139,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             <div style={sectionHeading}>Предстоящие матчи</div>
             {upcoming.length === 0 && <p style={emptyText}>Нет предстоящих матчей.</p>}
             {upcoming.map((g) => (
-              <GameRow key={g.id} game={toGame(g)} showDate standings={standings.teamsById} />
+              <GameRow key={g.id} game={toGame(g)} showDate standings={standings.teamsById} compactStats={true} />
             ))}
           </div>
         </div>

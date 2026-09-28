@@ -5,14 +5,15 @@ import { useMemo, useState } from "react";
 import { TeamLogo } from "@/components/TeamLogo";
 import type { StandingsData, StandingsGroup, StandingsTeam } from "@/lib/types";
 import { colors } from "@/lib/theme";
+import { avg } from "@/lib/calculations";
 
 const columns = [
   ["GP", "gamesPlayed"],
   ["W", "wins"],
   ["OTW", "otWins"],
   ["SOW", "shootoutWins"],
-  ["SOL", "shootoutLosses"],
   ["OTL", "otLosses"],
+  ["SOL", "shootoutLosses"],
   ["L", "losses"],
 ] as const;
 
@@ -25,10 +26,13 @@ type SortKey =
   | "wins"
   | "otWins"
   | "shootoutWins"
-  | "shootoutLosses"
   | "otLosses"
+  | "shootoutLosses"
   | "losses"
   | "goalsFor"
+  | "goalsForAverage"
+  | "goalsAgainst"
+  | "goalsAgainstAverage"
   | "goalDiff"
   | "points";
 
@@ -39,9 +43,32 @@ function sortTeams(teams: StandingsTeam[], sort: SortState | null): StandingsTea
   const factor = sort.dir === "asc" ? 1 : -1;
   return [...teams].sort((a, b) => {
     if (sort.key === "name") return factor * a.name.localeCompare(b.name, "ru");
-    const av = a[sort.key as Exclude<SortKey, "name">];
-    const bv = b[sort.key as Exclude<SortKey, "name">];
+    if (sort.key === "goalsForAverage") return factor * (avg(a.goalsFor, a.gamesPlayed) - avg(b.goalsFor, b.gamesPlayed));
+    if (sort.key === "goalsAgainstAverage") return factor * (avg(a.goalsAgainst, a.gamesPlayed) - avg(b.goalsAgainst, b.gamesPlayed));
+    const av = a[sort.key as Exclude<SortKey, "name" | "goalsForAverage" | "goalsAgainstAverage">];
+    const bv = b[sort.key as Exclude<SortKey, "name" | "goalsForAverage" | "goalsAgainstAverage">];
     return factor * (Number(av) - Number(bv));
+  });
+}
+
+const CONFERENCE_ORDER = ["Восточная конференция", "Западная конференция"];
+const DIVISION_ORDER = [
+  "Дивизион Чернышева",
+  "Дивизион Харламова",
+  "Дивизион Боброва",
+  "Дивизион Тарасова",
+];
+
+function orderIndex(list: string[], value: string): number {
+  const index = list.indexOf(value);
+  return index === -1 ? list.length : index;
+}
+
+function sortGroups(groups: StandingsGroup[]): StandingsGroup[] {
+  return [...groups].sort((a, b) => {
+    const conferenceDiff = orderIndex(CONFERENCE_ORDER, a.conference) - orderIndex(CONFERENCE_ORDER, b.conference);
+    if (conferenceDiff !== 0) return conferenceDiff;
+    return orderIndex(DIVISION_ORDER, a.division) - orderIndex(DIVISION_ORDER, b.division);
   });
 }
 
@@ -51,11 +78,7 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
 
   const conferenceGroups = useMemo(() => standings.conferenceGroups, [standings.conferenceGroups]);
 
-  const groups: StandingsGroup[] = view === "overall"
-    ? [standings.overall]
-    : view === "conference"
-      ? conferenceGroups
-      : standings.groups;
+  const groups: StandingsGroup[] = sortGroups(view === "overall" ? [standings.overall] : view === "conference" ? conferenceGroups : standings.groups);
 
   function toggleSort(key: SortKey) {
     setSort((prev) => {
@@ -63,6 +86,8 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
       return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
     });
   }
+
+  const [hoveredTeamId, setHoveredTeamId] = useState<number | null>(null);
 
   function sortIndicator(key: SortKey) {
     const isActive = sort?.key === key;
@@ -94,7 +119,7 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
 
   return (
     <>
-      <nav style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "2.5rem" }}>
+      <nav style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "2.5rem", justifyContent: "center" }}>
         {(["overall", "conference", "division"] as const).map((key) => (
           <button key={key} onClick={() => setView(key)} className="khl-tab" style={{
             background: "transparent",
@@ -105,7 +130,7 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
             fontSize: "0.95rem",
             padding: "0.55rem 0.9rem",
           }}>
-            {key === "overall" ? "Общая" : key === "conference" ? "Конференции" : "Дивизионы"}
+            {key === "overall" ? "Чемпионат" : key === "conference" ? "Конференции" : "Дивизионы"}
           </button>
         ))}
       </nav>
@@ -131,7 +156,15 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
                       </th>
                     ))}
                     <th style={styles.statHeader} className="khl-sortable" onClick={() => toggleSort("goalsFor")}>
-                      Шайбы{sortIndicator("goalsFor")}
+                      GF{sortIndicator("goalsFor")}
+                    </th><th style={styles.statHeader} className="khl-sortable" onClick={() => toggleSort("goalsForAverage")}>
+                      GFA{sortIndicator("goalsForAverage")}
+                    </th>
+                    <th style={styles.statHeader} className="khl-sortable" onClick={() => toggleSort("goalsAgainst")}>
+                      GA{sortIndicator("goalsAgainst")}
+                    </th>
+                    <th style={styles.statHeader} className="khl-sortable" onClick={() => toggleSort("goalsAgainstAverage")}>
+                      GAA{sortIndicator("goalsAgainstAverage")}
                     </th>
                     <th style={styles.statHeader} className="khl-sortable" onClick={() => toggleSort("goalDiff")}>
                       +/-{sortIndicator("goalDiff")}
@@ -144,11 +177,13 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
                 <tbody>
                   {sortTeams(group.teams, sort).map((team) => (
                     <tr key={team.id} className="khl-standings-row" style={{ borderTop: `1px solid ${colors.borderSoft}` }}>
-                      <td style={{ ...styles.rankCell, color: team.playoff ? colors.win : colors.muted }}>{team.rank}</td>
+                      <td style={{ ...styles.rankCell, color: team.playoff ? colors.text : colors.muted }}>{team.rank}</td>
                       <td style={styles.teamCell}>
                         <Link
                           href={`/team/${team.id}`}
                           className="khl-team-link"
+                          onMouseEnter={() => setHoveredTeamId(team.id)}
+                          onMouseLeave={() => setHoveredTeamId(null)}
                           style={{
                             alignItems: "center",
                             color: colors.text,
@@ -156,6 +191,11 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
                             gap: "0.7rem",
                             textDecoration: "none",
                             maxWidth: "13rem",
+                            padding: "0.3rem 0.5rem",
+                            margin: "-0.3rem -0.5rem",
+                            borderRadius: "8px",
+                            background: hoveredTeamId === team.id ? colors.borderSoft : "transparent",
+                            transition: "background 0.15s ease",
                           }}
                         >
                           <TeamLogo team={{ id: team.id, name: team.name, logoUrl: team.logoUrl }} size={38} ring={false} />
@@ -165,7 +205,10 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
                         </Link>
                       </td>
                       {columns.map(([, key]) => <td key={key} style={styles.statCell}>{team[key]}</td>)}
-                      <td style={styles.statCell}>{team.goalsFor}-{team.goalsAgainst}</td>
+                      <td style={styles.statCell}>{team.goalsFor}</td>
+                      <td style={styles.statCell}>{avg(team.goalsFor, team.gamesPlayed).toFixed(2)}</td>
+                      <td style={styles.statCell}>{team.goalsAgainst}</td>
+                      <td style={styles.statCell}>{avg(team.goalsAgainst, team.gamesPlayed).toFixed(2)}</td>
                       <td style={styles.statCell}>{team.goalDiff > 0 ? `+${team.goalDiff}` : team.goalDiff}</td>
                       <td style={{ ...styles.pointsCell, color: colors.accent }}>{team.points}</td>
                     </tr>
@@ -181,12 +224,12 @@ export function StandingsBrowser({ standings }: { standings: StandingsData }) {
 }
 
 const styles = {
-  rankHeader: { padding: "0.7rem 0.5rem", textAlign: "center" as const, width: "3rem" },
-  teamHeader: { padding: "0.7rem 0.5rem", textAlign: "left" as const },
-  statHeader: { padding: "0.7rem 0.45rem", textAlign: "center" as const, width: "4.5rem" },
-  pointsHeader: { padding: "0.7rem 0.75rem", textAlign: "center" as const, width: "4rem" },
-  rankCell: { padding: "0.8rem 0.5rem", textAlign: "center" as const, fontFamily: "var(--font-display)", fontWeight: 600 },
-  teamCell: { padding: "0.55rem 0.5rem", fontSize: "1rem", minWidth: "15rem", textAlign: "left" as const },
-  statCell: { padding: "0.8rem 0.45rem", textAlign: "center" as const, color: colors.muted },
-  pointsCell: { padding: "0.8rem 0.75rem", textAlign: "center" as const, fontFamily: "var(--font-display)", fontSize: "1.1rem", fontWeight: 700 },
+  rankHeader: { padding: "0.3rem 0.3rem", textAlign: "center" as const, width: "3.5rem" },
+  teamHeader: { padding: "0.3rem 0.3rem", textAlign: "left" as const },
+  statHeader: { padding: "0.3rem 0.3rem", textAlign: "center" as const, width: "3.5rem" },
+  pointsHeader: { padding: "0.3rem 0.3rem", textAlign: "center" as const, width: "3.5rem" },
+  rankCell: { padding: "0.3rem 0.3rem", textAlign: "center" as const, width: "3.5rem", fontFamily: "var(--font-display)", fontWeight: 600 },
+  teamCell: { padding: "0.3rem 0.3rem", fontSize: "1rem", minWidth: "15rem", textAlign: "left" as const },
+  statCell: { padding: "0.3rem 0.3rem", textAlign: "center" as const, width: "3.5rem", color: colors.muted },
+  pointsCell: { padding: "0.3rem 0.3rem", textAlign: "center" as const, width: "3.5rem", fontFamily: "var(--font-display)", fontSize: "1.1rem", fontWeight: 700 },
 };
