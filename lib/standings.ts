@@ -3,7 +3,7 @@ import type { StandingsData, StandingsGroup, StandingsTeam } from "./types";
 
 export function emptyStandings(): StandingsData {
   return {
-    overall: { conference: "Общая таблица", division: "", teams: [] },
+    overall: { conference: "Чемпионат", division: "", teams: [] },
     conferenceGroups: [],
     groups: [],
     teamsById: {},
@@ -144,7 +144,7 @@ export function normalizeStandings(payload: unknown): StandingsData {
         return known ? { ...known, rank: normalized.rank } : normalized;
       })
       .filter((team) => team.id > 0 && team.name.length > 0);
-    const overall = { conference: "Общая таблица", division: "", teams: overallTeams };
+    const overall = { conference: "Чемпионат", division: "", teams: overallTeams };
     return {
       overall,
       conferenceGroups,
@@ -167,7 +167,7 @@ export function normalizeStandings(payload: unknown): StandingsData {
   }
 
   return {
-    overall: uniqueGroups[0] ?? { conference: "Общая таблица", division: "", teams: [] },
+    overall: uniqueGroups[0] ?? { conference: "Чемпионат", division: "", teams: [] },
     conferenceGroups: uniqueGroups,
     groups: uniqueGroups,
     teamsById: Object.fromEntries(
@@ -223,7 +223,7 @@ function groupsFromRows(rows: Awaited<ReturnType<typeof prisma.standingsRow.find
   }
 
   return {
-    overall: { conference: "Общая таблица", division: "", teams },
+    overall: { conference: "Чемпионат", division: "", teams },
     conferenceGroups: Array.from(conferenceGroups, ([conference, conferenceTeams]) => ({
       conference,
       division: "",

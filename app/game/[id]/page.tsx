@@ -12,6 +12,7 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { TeamStatsLine } from "@/components/TeamStatsLine";
 import { teamColors } from "@/lib/team-colors";
 import { getSession, KHL_UA } from "@/lib/khl-session";
+import { avg } from "@/lib/calculations";
 
 export const revalidate = 30;
 
@@ -381,7 +382,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           >
             <TeamLogo team={game.teamA} size={120} />
             <span style={teamNameStyle(aWon)}>{game.teamA.name}</span>
-            {!decided && <TeamStatsLine stats={statsA} />}
+            {!decided && <TeamStatsLine stats={statsA} compact={true} showRank={true} />}
           </Link>
 
           <div style={{ textAlign: "center", minWidth: "8rem" }}>
@@ -399,9 +400,21 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             )}
             {game.status === "LIVE" && (
               <>
-                <div style={{ color: colors.live, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "0.9rem", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>
-                  LIVE
-                </div>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", transform: "translateY(-10px)", }}>
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: colors.live,
+                      animation: "live-pulse 1.4s ease-in-out infinite",
+                    }}
+                  />
+                  <span style={{ color: colors.live, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "0.9rem", letterSpacing: "0.08em" }}>
+                    LIVE
+                  </span>
+                </span>
                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "clamp(3rem, 8vw, 5rem)", lineHeight: 1 }}>
                   {game.homeScore} : {game.visitorScore}
                 </div>
@@ -431,7 +444,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           >
             <TeamLogo team={game.teamB} size={120} />
             <span style={teamNameStyle(bWon)}>{game.teamB.name}</span>
-            {!decided && <TeamStatsLine stats={statsB} />}
+            {!decided && <TeamStatsLine stats={statsB} compact={true} showRank={true} />}
           </Link>
         </div>
 
@@ -570,6 +583,73 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               );
             });
           })()}
+        </section>
+      )}
+
+      {game.status === "SCHEDULED" && (statsA || statsB) && (
+        <section style={{ maxWidth: "1120px", margin: "2.5rem auto 0" }}>
+          <div style={{ overflowX: "auto", borderTop: `1px solid ${colors.border}` }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "820px", fontFamily: "var(--font-body)" }}>
+              <thead>
+                <tr style={{ color: colors.muted, fontSize: "0.7rem", textAlign: "center" }}>
+                  <th style={{ padding: "0.5rem 0.5rem", width: "3rem" }}>#</th>
+                  <th style={{ padding: "0.5rem 0.5rem", textAlign: "left" }}>Team</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>G</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>W</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>OTW</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>SOW</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>OTL</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>SOL</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>L</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>GF</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>GFA</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>GA</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3rem" }}>GAA</th>
+                  <th style={{ padding: "0.5rem 0.35rem", width: "3.5rem" }}>+/-</th>
+                  <th style={{ padding: "0.5rem 0.4rem", width: "3rem" }}>P</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { team: game.teamA, stats: statsA },
+                  { team: game.teamB, stats: statsB },
+                ].map(({ team, stats }) => (
+                  <tr key={team.id} style={{ borderTop: `1px solid ${colors.borderSoft}` }}>
+                    <td style={{ padding: "0.5rem 0.4rem", textAlign: "center", fontFamily: "var(--font-display)", fontWeight: 600, color: stats?.playoff ? colors.text : colors.muted }}>
+                      {stats?.rank ?? "—"}
+                    </td>
+                    <td style={{ padding: "0.5rem 0.5rem", textAlign: "left" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                        <TeamLogo team={team} size={26} ring={false} />
+                        <span style={{ whiteSpace: "nowrap" }}>{team.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.gamesPlayed ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.wins ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.otWins ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.shootoutWins ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.otLosses ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.shootoutLosses ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.losses ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.goalsFor ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>
+                      {stats ? avg(stats.goalsFor, stats.gamesPlayed).toFixed(2) : "—"}
+                    </td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>{stats?.goalsAgainst ?? "—"}</td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>
+                      {stats ? avg(stats.goalsAgainst, stats.gamesPlayed).toFixed(2) : "—"}
+                    </td>
+                    <td style={{ padding: "0.5rem 0.35rem", textAlign: "center", color: colors.muted }}>
+                      {stats ? (stats.goalDiff > 0 ? `+${stats.goalDiff}` : stats.goalDiff) : "—"}
+                    </td>
+                    <td style={{ padding: "0.5rem 0.4rem", textAlign: "center", fontFamily: "var(--font-display)", fontWeight: 700, color: colors.accent }}>
+                      {stats?.points ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
