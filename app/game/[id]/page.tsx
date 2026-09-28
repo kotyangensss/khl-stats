@@ -329,9 +329,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     : [];
   const statsA = standings.teamsById[game.teamAId];
   const statsB = standings.teamsById[game.teamBId];
-  const isPlayoff = game.stage?.type === "playoff";
   const colorA = teamColors[game.teamA.id];
   const colorB = teamColors[game.teamB.id];
+  const isPlayoff = game.stage?.type === "playoff";
+  const isIntermission = /перерыв|intermission|break/i.test(`${game.liveStatus ?? ""}`);
 
   const teamNameStyle = (won: boolean): CSSProperties => ({
     fontFamily: "var(--font-display)",
@@ -423,7 +424,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                     {game.liveStatus}
                   </div>
                 )}
-                {liveClock && (
+                {liveClock && !isIntermission &&(
                   <div style={{ color: colors.muted, fontFamily: "var(--font-display)", fontSize: "0.9rem", marginTop: "0.5rem" }}>
                     {liveClock}
                   </div>
