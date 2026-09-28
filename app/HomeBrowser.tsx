@@ -5,13 +5,13 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { GameRow } from "@/components/GameRow";
-import type { Game, StandingsData, StandingsTeam } from "@/lib/types";
+import { TeamLogo } from "@/components/TeamLogo";
+import type { Game, StandingsData } from "@/lib/types";
 import { dayKey, formatDayHeading } from "@/lib/format";
 import { currentMonthKey, formatMonthLabel, parseTimeMinutes, shiftMonthKey } from "@/lib/schedule";
 import { colors } from "@/lib/theme";
-import { TeamLogo } from "@/components/TeamLogo";
 
-const TEAM_STORAGE_KEY = "khl-stats:team";
+const TEAM_FILTER_KEY = "khl-team-filter";
 
 type GamesResponse = { games: Game[]; scope: "upcoming" | "past"; month: string };
 type NearestResponse = { day: "today" | "tomorrow"; date: string; games: Game[] };
@@ -86,134 +86,6 @@ function GamesSkeleton({ rows = 5 }: { rows?: number }) {
   );
 }
 
-function TeamFilter({
-  teams,
-  selectedId,
-  onChange,
-}: {
-  teams: StandingsTeam[];
-  selectedId: number | null;
-  onChange: (id: number | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [highlight, setHighlight] = useState(0);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const selected = teams.find((t) => t.id === selectedId) ?? null;
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? teams.filter((t) => t.name.toLowerCase().includes(q)) : teams;
-  }, [teams, query]);
-
-  function close() {
-    setOpen(false);
-    setQuery("");
-    setHighlight(0);
-  }
-
-  function pick(id: number | null) {
-    onChange(id);
-    close();
-    inputRef.current?.blur();
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) close();
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setOpen(true);
-      setHighlight((h) => Math.min(h + 1, filtered.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const team = filtered[highlight];
-      if (team) pick(team.id);
-    } else if (e.key === "Escape") {
-      close();
-      inputRef.current?.blur();
-    }
-  }
-
-  return (
-    <div ref={wrapRef} style={styles.teamFilter}>
-      <div style={styles.teamFilterBox} onClick={() => inputRef.current?.focus()}>
-        {selected && (
-          <TeamLogo team={{ id: selected.id, name: selected.name, logoUrl: selected.logoUrl }} size={22} ring={false} />
-        )}
-        <input
-          ref={inputRef}
-          value={open ? query : selected?.name ?? ""}
-          placeholder="Фильтр по команде"
-          onFocus={() => setOpen(true)}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setHighlight(0);
-            setOpen(true);
-          }}
-          onKeyDown={onKeyDown}
-          style={styles.teamFilterInput}
-          aria-label="Фильтр по команде"
-        />
-        {selected && !open && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              pick(null);
-            }}
-            style={styles.teamFilterClear}
-            aria-label="Сбросить фильтр"
-          >
-            ×
-          </button>
-        )}
-      </div>
-
-      {open && (
-        <div style={styles.teamDropdown} role="listbox">
-          {query === "" && (
-            <div
-              role="option"
-              aria-selected={selectedId === null}
-              onClick={() => pick(null)}
-              style={{ ...styles.teamOption, color: colors.muted }}
-            >
-              Все команды
-            </div>
-          )}
-          {filtered.length === 0 && <div style={{ ...styles.teamOption, color: colors.muted, cursor: "default" }}>Ничего не найдено</div>}
-          {filtered.map((team, index) => (
-            <div
-              key={team.id}
-              role="option"
-              aria-selected={team.id === selectedId}
-              onClick={() => pick(team.id)}
-              onMouseEnter={() => setHighlight(index)}
-              style={{ ...styles.teamOption, background: index === highlight ? colors.borderSoft : "transparent" }}
-            >
-              <TeamLogo team={{ id: team.id, name: team.name, logoUrl: team.logoUrl }} size={24} ring={false} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function HomeContent({
   initialNearest,
   initialData,
@@ -237,15 +109,18 @@ function HomeContent({
   const [error, setError] = useState<string | null>(null);
   const [hoveredNav, setHoveredNav] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const teamParam = searchParams.get("team");
-  const teamId = teamParam && /^\d+$/.test(teamParam) ? Number(teamParam) : null;
 
-  const showNearest = tab === "upcoming" && month === currentMonthKey() && teamId === null;
+  // Фильтр по команде — логика из main
+  const [teamQuery, setTeamQuery] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
-  function setUrl(nextTab: Tab, nextMonth: string, nextTeamId: number | null = teamId) {
+  const showNearest = tab === "upcoming" && month === currentMonthKey() && selectedTeamId === null;
+
+  function setUrl(nextTab: Tab, nextMonth: string) {
     const params = new URLSearchParams({ tab: nextTab, month: nextMonth });
-    if (teamId !== null) params.set("team", String(teamId));
-    if (nextTeamId !== null) params.set("team", String(nextTeamId));
+    if (selectedTeamId != null) params.set("team", String(selectedTeamId));
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
@@ -257,30 +132,50 @@ function HomeContent({
     setUrl(tab, shiftMonthKey(month, delta));
   }
 
-  function switchTeam(id: number | null) {
+  // Чтение сохранённой команды: приоритет у URL, иначе localStorage (из main)
+  useEffect(() => {
+    const fromUrl = searchParams.get("team");
+    if (fromUrl != null && Number.isFinite(Number(fromUrl))) {
+      setSelectedTeamId(Number(fromUrl));
+    } else {
+      const saved = window.localStorage.getItem(TEAM_FILTER_KEY);
+      const parsed = saved != null ? Number(saved) : null;
+      if (parsed != null && Number.isFinite(parsed)) setSelectedTeamId(parsed);
+    }
+    setHydrated(true);
+  }, [searchParams]);
+
+  const teams = useMemo(
+    () => Object.values(standings).sort((a, b) => a.name.localeCompare(b.name, "ru")),
+    [standings]
+  );
+
+  const selectedTeam = useMemo(
+    () => (selectedTeamId != null ? teams.find((t) => t.id === selectedTeamId) : undefined),
+    [teams, selectedTeamId]
+  );
+
+  function chooseTeam(teamId: number | null) {
+    setSelectedTeamId(teamId);
     try {
-      if (id === null) window.localStorage.removeItem(TEAM_STORAGE_KEY);
-      else window.localStorage.setItem(TEAM_STORAGE_KEY, String(id));
-    } catch { }
-    setUrl(tab, month, id);
+      if (teamId == null) window.localStorage.removeItem(TEAM_FILTER_KEY);
+      else window.localStorage.setItem(TEAM_FILTER_KEY, String(teamId));
+    } catch {
+      // приватный режим / localStorage недоступен — молча живём дальше
+    }
+    const params = new URLSearchParams({ tab, month });
+    if (teamId == null) params.delete("team");
+    else params.set("team", String(teamId));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
-  // Восстановить сохранённую команду при заходе без ?team=
-  const restoredRef = useRef(false);
+  // Сохранённая команда не найдена в текущем составе — сбрасываем (из main)
   useEffect(() => {
-    if (restoredRef.current) return;
-    restoredRef.current = true;
-    if (teamId !== null) return;
-    try {
-      const stored = window.localStorage.getItem(TEAM_STORAGE_KEY);
-      const id = stored && /^\d+$/.test(stored) ? Number(stored) : null;
-      if (id !== null && standings[id]) {
-        const params = new URLSearchParams({ tab, month, team: String(id) });
-        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-      }
-    } catch { }
+    if (hydrated && selectedTeamId != null && teams.length > 0 && !selectedTeam) {
+      chooseTeam(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hydrated, teams, selectedTeamId, selectedTeam]);
 
   const isInitialMount = useRef(true);
 
@@ -290,7 +185,7 @@ function HomeContent({
       return;
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [tab, month, teamId]);
+  }, [tab, month, selectedTeamId]);
 
   useEffect(() => {
     const params = new URLSearchParams({ scope: tab, month });
@@ -363,9 +258,17 @@ function HomeContent({
 
   const nearestDayKey = useMemo(() => dayKey(nearest.date), [nearest.date]);
 
+  // Клиентская фильтрация по команде — как в main
+  const filteredGames = useMemo(() => {
+    if (selectedTeamId == null) return data.games;
+    return data.games.filter(
+      (g) => g.teamA.id === selectedTeamId || g.teamB.id === selectedTeamId
+    );
+  }, [data.games, selectedTeamId]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, Game[]>();
-    for (const game of data.games) {
+    for (const game of filteredGames) {
       const key = dayKey(game.date);
       if (showNearest && key === nearestDayKey) continue;
       if (!map.has(key)) map.set(key, []);
@@ -375,12 +278,12 @@ function HomeContent({
       date,
       [...dayGames].sort((a, b) => parseTimeMinutes(a.timeFormat) - parseTimeMinutes(b.timeFormat)),
     ] as [string, Game[]]);
-  }, [data.games, showNearest, nearestDayKey]);
+  }, [filteredGames, showNearest, nearestDayKey]);
 
-  const teamOptions = useMemo(
-    () => Object.values(standings).sort((a, b) => a.name.localeCompare(b.name, "ru")),
-    [standings]
-  );
+  const menuTeams = useMemo(() => {
+    const q = teamQuery.trim().toLowerCase();
+    return q ? teams.filter((t) => t.name.toLowerCase().includes(q)) : teams;
+  }, [teams, teamQuery]);
 
   const pagination = (compact?: boolean): ReactNode => (
     <div style={compact ? styles.paginationInline : styles.pagination}>
@@ -397,6 +300,30 @@ function HomeContent({
           @keyframes khl-skeleton-pulse {
             0%, 100% { opacity: 0.45; }
             50% { opacity: 0.85; }
+          }
+          .khl-filter-menu {
+            scrollbar-width: thin;
+            scrollbar-color: ${colors.borderSoft} transparent;
+          }
+          .khl-filter-menu::-webkit-scrollbar {
+            width: 8px;
+          }
+          .khl-filter-menu::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .khl-filter-menu::-webkit-scrollbar-thumb {
+            background: ${colors.borderSoft};
+            border-radius: 999px;
+          }
+          .khl-filter-menu::-webkit-scrollbar-thumb:hover {
+            background: ${colors.accent}66;
+          }
+          .khl-filter-item {
+            transition: background-color 0.15s ease, padding-left 0.15s ease, color 0.15s ease;
+          }
+          .khl-filter-item:hover {
+            background: ${colors.accent}1A;
+            padding-left: 1.05rem;
           }
         `}</style>
         <Link href="/" style={styles.wordmark}>Расписание КХЛ</Link>
@@ -425,7 +352,58 @@ function HomeContent({
       )}
 
       <div style={styles.controlsRow}>
-        <TeamFilter teams={teamOptions} selectedId={teamId} onChange={switchTeam} />
+        {/* Фильтр по команде — разметка и поведение из main (левая колонка) */}
+        <div style={styles.filterCell}>
+        <div style={styles.filterWrap}>
+          <input
+            value={selectedTeam ? selectedTeam.name : teamQuery}
+            onChange={(e) => {
+              setSelectedTeamId(null);
+              setTeamQuery(e.target.value);
+              setTeamMenuOpen(true);
+            }}
+            onClick={() => {
+              // Поле заполнено — очищаем и сразу показываем список команд
+              if (selectedTeam) {
+                setSelectedTeamId(null);
+                setTeamQuery("");
+              }
+              setTeamMenuOpen(true);
+            }}
+            onFocus={() => setTeamMenuOpen(true)}
+            onBlur={() => window.setTimeout(() => setTeamMenuOpen(false), 150)}
+            placeholder="Фильтр по команде…"
+            style={{ ...styles.filterInput, ...(selectedTeam != null ? styles.filterInputWithCount : {}) }}
+          />
+          {selectedTeam != null && (
+            <span style={styles.filterCount}>Матчей: {filteredGames.length}</span>
+          )}
+          {teamMenuOpen && (
+            <div style={styles.filterMenu} className="khl-filter-menu">
+              {menuTeams.map((team) => (
+                <button
+                  key={team.id}
+                  className="khl-filter-item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    chooseTeam(team.id);
+                    setTeamMenuOpen(false);
+                    setTeamQuery("");
+                  }}
+                  style={{ ...styles.filterMenuItem, ...(team.id === selectedTeamId ? styles.filterMenuItemActive : {}) }}
+                >
+                  <TeamLogo team={team} size={22} />
+                  <span>{team.name}</span>
+                </button>
+              ))}
+              {menuTeams.length === 0 && <div style={styles.filterMenuEmpty}>Команда не найдена</div>}
+            </div>
+          )}
+        </div>
+        {selectedTeam != null && (
+          <button onClick={() => { chooseTeam(null); setTeamQuery(""); }} style={styles.filterClear}>✕ сбросить</button>
+        )}
+        </div>
         {pagination(true)}
         <nav style={styles.tabs}>
           {TABS.map((item) => (
@@ -444,7 +422,6 @@ function HomeContent({
             </button>
           ))}
         </nav>
-        <div aria-hidden />
       </div>
       {
         isLoading ? (
@@ -457,9 +434,14 @@ function HomeContent({
                 <p style={styles.emptyBody}>{error}. Обновите страницу через минуту.</p>
               </div>
             )}
-            {!error && data.games.length === 0 && (
+            {!error && filteredGames.length === 0 && (
               <div style={styles.emptyState}>
                 <p style={styles.emptyTitle}>Матчей не найдено</p>
+                <p style={styles.emptyBody}>
+                  {selectedTeam != null
+                    ? `У «${selectedTeam.name}» на этом периоде (${formatMonthLabel(month)}) матчей нет — попробуйте другой месяц или сбросьте фильтр.`
+                    : `За этот период (${formatMonthLabel(month)}) матчей нет — попробуйте другой месяц.`}
+                </p>
               </div>
             )}
             {grouped.length > 0 && (
@@ -528,6 +510,19 @@ const styles: Record<string, CSSProperties> = {
   nearestRow: {
     borderBottom: `1px solid ${colors.border}`
   },
+
+  // Стили фильтра — из main (теперь в левой колонке строки управления)
+  filterCell: { display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap", justifySelf: "start" },
+  filterWrap: { position: "relative", flex: "0 1 260px", maxWidth: "320px", width: "100%" },
+  filterInput: { width: "100%", fontFamily: "var(--font-body)", fontSize: "0.95rem", padding: "0.55rem 0.9rem", borderRadius: "999px", borderWidth: "1px", borderStyle: "solid", borderColor: colors.border, background: "transparent", color: colors.text, outline: "none", boxSizing: "border-box" },
+  filterInputWithCount: { paddingRight: "5.5rem" },
+  filterMenu: { position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, maxHeight: "280px", overflowY: "auto", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: "12px", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 10 },
+  filterMenuItem: { display: "flex", alignItems: "center", gap: "0.6rem", width: "100%", padding: "0.5rem 0.8rem", background: "transparent", border: "none", color: colors.text, cursor: "pointer", textAlign: "left", fontSize: "0.95rem", transition: "background-color 0.15s ease, padding-left 0.15s ease" },
+  filterMenuItemActive: { background: `${colors.accent}22` },
+  filterMenuEmpty: { padding: "0.7rem 0.9rem", color: colors.muted, fontSize: "0.9rem" },
+  filterClear: { fontFamily: "var(--font-display)", fontSize: "0.8rem", padding: "0.55rem 0.9rem", borderRadius: "999px", border: `1px solid ${colors.border}`, background: "transparent", color: colors.muted, cursor: "pointer", height: "fit-content" },
+  filterCount: { position: "absolute", right: "0.9rem", top: "50%", transform: "translateY(-50%)", color: colors.muted, fontSize: "0.75rem", fontFamily: "var(--font-display)", whiteSpace: "nowrap", pointerEvents: "none" },
+
   controlsRow: {
     display: "grid",
     gridTemplateColumns: "1fr auto 1fr",
@@ -578,73 +573,4 @@ const styles: Record<string, CSSProperties> = {
   skeletonRow: { padding: "0.9rem clamp(1.25rem, 5vw, 3rem)", borderBottom: `1px solid ${colors.borderSoft}` },
   skeletonLogo: { width: "56px", height: "56px", borderRadius: "50%", background: colors.borderSoft, flexShrink: 0, animation: "khl-skeleton-pulse 1.2s ease-in-out infinite" },
   skeletonBar: { borderRadius: "4px", background: colors.borderSoft, animation: "khl-skeleton-pulse 1.2s ease-in-out infinite" },
-  teamSelect: {
-    justifySelf: "start",
-    maxWidth: "100%",
-    fontFamily: "var(--font-display)",
-    fontSize: "0.9rem",
-    fontWeight: 500,
-    lineHeight: 1,
-    padding: "0.6rem 1.1rem",
-    borderRadius: "6px",
-    border: `1px solid ${colors.border}`,
-    background: colors.bg,
-    color: colors.text,
-    cursor: "pointer",
-  },
-  teamFilter: { position: "relative", justifySelf: "start", width: "100%", maxWidth: "18rem" },
-  teamFilterBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.5rem",
-    height: "2.4rem",
-    boxSizing: "border-box",
-    padding: "0 0.75rem",
-    borderRadius: "6px",
-    border: `1px solid ${colors.border}`,
-    background: colors.bg,
-    cursor: "text",
-  },
-  teamFilterInput: {
-    flex: 1,
-    minWidth: 0,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    color: colors.text,
-    fontFamily: "var(--font-display)",
-    fontSize: "0.9rem",
-  },
-  teamFilterClear: {
-    border: "none",
-    background: "transparent",
-    color: colors.muted,
-    fontSize: "1.1rem",
-    lineHeight: 1,
-    cursor: "pointer",
-    padding: 0,
-  },
-  teamDropdown: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    left: 0,
-    width: "100%",
-    minWidth: "16rem",
-    maxHeight: "20rem",
-    overflowY: "auto",
-    background: colors.bg,
-    border: `1px solid ${colors.border}`,
-    borderRadius: "8px",
-    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
-    zIndex: 20,
-  },
-  teamOption: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.6rem",
-    padding: "0.45rem 0.75rem",
-    fontFamily: "var(--font-display)",
-    fontSize: "0.9rem",
-    cursor: "pointer",
-  },
 };

@@ -17,15 +17,19 @@ export async function GET(request: NextRequest) {
   const scope: Scope = searchParams.get("scope") === "past" ? "past" : "upcoming";
   const rawMonth = searchParams.get("month");
   const month = isValidMonthKey(rawMonth) ? rawMonth : currentMonthKey();
-  const { start, end } = monthWindow(month);
+
   const rawTeam = searchParams.get("team");
   const teamId = rawTeam && /^\d+$/.test(rawTeam) ? Number(rawTeam) : null;
+
+  const { start, end } = monthWindow(month);
 
   const games = await prisma.game.findMany({
     where: {
       date: { gte: start, lt: end },
       ...(scope === "past" ? { status: "FINISHED" } : { status: { not: "FINISHED" } }),
-      ...(teamId !== null ? { OR: [{ teamAId: teamId }, { teamBId: teamId }] } : {}),
+      ...(teamId !== null
+        ? { OR: [{ teamA: { id: teamId } }, { teamB: { id: teamId } }] }
+        : {}),
     },
     orderBy: { date: scope === "past" ? "desc" : "asc" },
     select: {
@@ -41,5 +45,6 @@ export async function GET(request: NextRequest) {
     games: sortGamesByDateAndTime(games.map(toGame), scope === "past" ? "desc" : "asc"),
     scope,
     month,
+    teamId
   });
 }
