@@ -78,7 +78,8 @@ function GameRowSkeleton() {
 
 function GamesSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div>
+    <div style={styles.skeletonList}>
+      <div style={styles.skeletonDayHeading} />
       {Array.from({ length: rows }).map((_, i) => (
         <GameRowSkeleton key={i} />
       ))}
@@ -115,6 +116,8 @@ function HomeContent({
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const showNearest = tab === "upcoming" && month === currentMonthKey() && selectedTeamId === null;
 
@@ -285,6 +288,42 @@ function HomeContent({
     return q ? teams.filter((t) => t.name.toLowerCase().includes(q)) : teams;
   }, [teams, teamQuery]);
 
+  const inputValue = editing || !selectedTeam ? teamQuery : selectedTeam.name;
+
+  function startEditing() {
+    // Поле заполнено выбранной командой — очищаем только текст, фильтр не трогаем
+    if (selectedTeam && !editing) {
+      setEditing(true);
+      setTeamQuery("");
+    }
+    setTeamMenuOpen(true);
+  }
+
+  function pickTeam(teamId: number | null) {
+    chooseTeam(teamId);
+    setTeamQuery("");
+    setEditing(false);
+    setTeamMenuOpen(false);
+    inputRef.current?.blur();
+  }
+
+  function handleFilterKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (teamQuery.trim() === "") {
+        if (selectedTeamId != null) pickTeam(null); // пустая строка + Enter = сброс фильтра
+      } else if (menuTeams.length > 0) {
+        pickTeam(menuTeams[0].id); // Enter с текстом = первая найденная команда
+      }
+    } else if (e.key === "Escape") {
+      // отмена редактирования: возвращаем название выбранной команды
+      setEditing(false);
+      setTeamQuery("");
+      setTeamMenuOpen(false);
+      inputRef.current?.blur();
+    }
+  }
+
   const pagination = (compact?: boolean): ReactNode => (
     <div style={compact ? styles.paginationInline : styles.pagination}>
       <button style={styles.pageButton} onClick={() => switchMonth(-1)}>← Назад</button>
@@ -301,24 +340,8 @@ function HomeContent({
             0%, 100% { opacity: 0.45; }
             50% { opacity: 0.85; }
           }
-          .khl-filter-menu {
-            scrollbar-width: thin;
-            scrollbar-color: ${colors.borderSoft} transparent;
-          }
-          .khl-filter-menu::-webkit-scrollbar {
-            width: 8px;
-          }
-          .khl-filter-menu::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .khl-filter-menu::-webkit-scrollbar-thumb {
-            background: ${colors.borderSoft};
-            border-radius: 999px;
-          }
-          .khl-filter-menu::-webkit-scrollbar-thumb:hover {
-            background: ${colors.accent}66;
-          }
           .khl-filter-item {
+            padding: 0.5rem 0.8rem;
             transition: background-color 0.15s ease, padding-left 0.15s ease, color 0.15s ease;
           }
           .khl-filter-item:hover {
@@ -354,55 +377,58 @@ function HomeContent({
       <div style={styles.controlsRow}>
         {/* Фильтр по команде — разметка и поведение из main (левая колонка) */}
         <div style={styles.filterCell}>
-        <div style={styles.filterWrap}>
-          <input
-            value={selectedTeam ? selectedTeam.name : teamQuery}
-            onChange={(e) => {
-              setSelectedTeamId(null);
-              setTeamQuery(e.target.value);
-              setTeamMenuOpen(true);
-            }}
-            onClick={() => {
-              // Поле заполнено — очищаем и сразу показываем список команд
-              if (selectedTeam) {
-                setSelectedTeamId(null);
-                setTeamQuery("");
+          <div style={styles.filterWrap}>
+            <input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => {
+                // selectedTeamId НЕ сбрасываем — список матчей остаётся прежним
+                setEditing(true);
+                setTeamQuery(e.target.value);
+                setTeamMenuOpen(true);
+              }}
+              onClick={startEditing}
+              onFocus={startEditing}
+              onKeyDown={handleFilterKeyDown}
+              onBlur={() =>
+                window.setTimeout(() => {
+                  setTeamMenuOpen(false);
+                  setEditing(false); // ушли из поля — снова показываем выбранную команду
+                }, 150)
               }
-              setTeamMenuOpen(true);
-            }}
-            onFocus={() => setTeamMenuOpen(true)}
-            onBlur={() => window.setTimeout(() => setTeamMenuOpen(false), 150)}
-            placeholder="Фильтр по команде…"
-            style={{ ...styles.filterInput, ...(selectedTeam != null ? styles.filterInputWithCount : {}) }}
-          />
+              placeholder="Фильтр по команде…"
+              style={{
+                ...styles.filterInput,
+                ...(selectedTeam != null && !editing ? styles.filterInputWithCount : {}),
+              }}
+            />
+
+            {selectedTeam != null && !editing && (
+              <span style={styles.filterCount}>Матчей: {filteredGames.length}</span>
+            )}
+
+            {teamMenuOpen && (
+              <div style={styles.filterMenu} className="khl-filter-menu">
+                {menuTeams.map((team) => (
+                  <button
+                    key={team.id}
+                    className="khl-filter-item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickTeam(team.id)}
+                    style={{ ...styles.filterMenuItem, ...(team.id === selectedTeamId ? styles.filterMenuItemActive : {}) }}
+                  >
+                    <TeamLogo team={team} size={22} />
+                    <span>{team.name}</span>
+                  </button>
+                ))}
+                {menuTeams.length === 0 && <div style={styles.filterMenuEmpty}>Команда не найдена</div>}
+              </div>
+            )}
+          </div>
+
           {selectedTeam != null && (
-            <span style={styles.filterCount}>Матчей: {filteredGames.length}</span>
+            <button onClick={() => pickTeam(null)} style={styles.filterClear}>✕ сбросить</button>
           )}
-          {teamMenuOpen && (
-            <div style={styles.filterMenu} className="khl-filter-menu">
-              {menuTeams.map((team) => (
-                <button
-                  key={team.id}
-                  className="khl-filter-item"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    chooseTeam(team.id);
-                    setTeamMenuOpen(false);
-                    setTeamQuery("");
-                  }}
-                  style={{ ...styles.filterMenuItem, ...(team.id === selectedTeamId ? styles.filterMenuItemActive : {}) }}
-                >
-                  <TeamLogo team={team} size={22} />
-                  <span>{team.name}</span>
-                </button>
-              ))}
-              {menuTeams.length === 0 && <div style={styles.filterMenuEmpty}>Команда не найдена</div>}
-            </div>
-          )}
-        </div>
-        {selectedTeam != null && (
-          <button onClick={() => { chooseTeam(null); setTeamQuery(""); }} style={styles.filterClear}>✕ сбросить</button>
-        )}
         </div>
         {pagination(true)}
         <nav style={styles.tabs}>
@@ -447,7 +473,7 @@ function HomeContent({
             {grouped.length > 0 && (
               <section style={styles.list}>
                 {grouped.map(([date, dayGames]) => (
-                  <div key={date}>
+                  <div key={date} style={{ marginTop: "1.5rem" }}>
                     <div style={styles.dayHeading}>{formatDayHeading(date)}</div>
                     {dayGames.map((game) => (
                       <GameRow key={game.id} game={game} standings={standings} compactStats={tab === "upcoming"} showStats={tab === "upcoming"} />
@@ -512,15 +538,58 @@ const styles: Record<string, CSSProperties> = {
   },
 
   // Стили фильтра — из main (теперь в левой колонке строки управления)
-  filterCell: { display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap", justifySelf: "start" },
-  filterWrap: { position: "relative", flex: "0 1 260px", maxWidth: "320px", width: "100%" },
-  filterInput: { width: "100%", fontFamily: "var(--font-body)", fontSize: "0.95rem", padding: "0.55rem 0.9rem", borderRadius: "999px", borderWidth: "1px", borderStyle: "solid", borderColor: colors.border, background: "transparent", color: colors.text, outline: "none", boxSizing: "border-box" },
+  filterCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.6rem",
+    flexWrap: "nowrap",   // было "wrap"
+    justifySelf: "start",
+    minWidth: 0,          // чтобы 1fr-колонка не раздувалась содержимым
+    width: "100%",
+  },
+  filterWrap: {
+    position: "relative",
+    flex: "1 1 0",        // поле занимает остаток и сжимается, если нужно
+    minWidth: 0,
+    maxWidth: "260px",
+  },
+  filterInput: {
+    width: "100%",
+    height: "2.5rem",     // фиксированная высота, не зависит от состояния
+    fontFamily: "var(--font-body)",
+    fontSize: "0.95rem",
+    lineHeight: 1.2,
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingLeft: "0.9rem",
+    paddingRight: "0.9rem",
+    borderRadius: "999px",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.border,
+    background: "transparent",
+    color: colors.text,
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  filterClear: {
+    fontFamily: "var(--font-display)",
+    fontSize: "0.8rem",
+    height: "2.5rem",     // такая же высота, как у поля
+    padding: "0 0.9rem",
+    borderRadius: "999px",
+    border: `1px solid ${colors.border}`,
+    background: "transparent",
+    color: colors.muted,
+    cursor: "pointer",
+    flexShrink: 0,        // кнопка не сжимается и не переносится
+    whiteSpace: "nowrap",
+  },
   filterInputWithCount: { paddingRight: "5.5rem" },
   filterMenu: { position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, maxHeight: "280px", overflowY: "auto", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: "12px", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 10 },
   filterMenuItem: { display: "flex", alignItems: "center", gap: "0.6rem", width: "100%", padding: "0.5rem 0.8rem", background: "transparent", border: "none", color: colors.text, cursor: "pointer", textAlign: "left", fontSize: "0.95rem", transition: "background-color 0.15s ease, padding-left 0.15s ease" },
   filterMenuItemActive: { background: `${colors.accent}22` },
   filterMenuEmpty: { padding: "0.7rem 0.9rem", color: colors.muted, fontSize: "0.9rem" },
-  filterClear: { fontFamily: "var(--font-display)", fontSize: "0.8rem", padding: "0.55rem 0.9rem", borderRadius: "999px", border: `1px solid ${colors.border}`, background: "transparent", color: colors.muted, cursor: "pointer", height: "fit-content" },
   filterCount: { position: "absolute", right: "0.9rem", top: "50%", transform: "translateY(-50%)", color: colors.muted, fontSize: "0.75rem", fontFamily: "var(--font-display)", whiteSpace: "nowrap", pointerEvents: "none" },
 
   controlsRow: {
@@ -528,7 +597,10 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "1fr auto 1fr",
     alignItems: "center",
     gap: "1rem",
-    padding: "1.5rem clamp(1.25rem, 5vw, 3rem) 0",
+    paddingTop: "1.5rem",
+    paddingBottom: "1.5rem",
+    paddingLeft: "clamp(1.25rem, 5vw, 3rem)",
+    paddingRight: "clamp(1.25rem, 5vw, 3rem)",
   },
   tabs: { display: "flex", gap: "0.4rem", alignItems: "center", justifySelf: "end" },
   tabButton: {
@@ -552,8 +624,15 @@ const styles: Record<string, CSSProperties> = {
   emptyState: { padding: "3rem clamp(1.25rem, 5vw, 3rem)" },
   emptyTitle: { fontFamily: "var(--font-display)", fontSize: "1.35rem", fontWeight: 600, margin: "0 0 0.4rem", textAlign: "center" },
   emptyBody: { color: colors.muted, margin: 0, fontSize: "1.05rem", textAlign: "center" },
-  list: { padding: "1rem clamp(1.25rem, 5vw, 3rem) 0" },
-  dayHeading: { fontFamily: "var(--font-display)", fontSize: "0.9rem", fontWeight: 600, letterSpacing: "0.03em", color: colors.muted, padding: "1.75rem 0 0.6rem", textAlign: "center" },
+  list: {},
+  dayHeading: {
+    fontFamily: "var(--font-display)",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    letterSpacing: "0.03em",
+    color: colors.muted,
+    textAlign: "center",
+  },
   pagination: { display: "flex", alignItems: "center", justifyContent: "center", gap: "1rem", padding: "2rem clamp(1.25rem, 5vw, 3rem) 0" },
   paginationInline: { display: "flex", alignItems: "center", gap: "0.75rem", justifySelf: "center", gridColumn: 2 },
   pageButton: {
@@ -573,4 +652,13 @@ const styles: Record<string, CSSProperties> = {
   skeletonRow: { padding: "0.9rem clamp(1.25rem, 5vw, 3rem)", borderBottom: `1px solid ${colors.borderSoft}` },
   skeletonLogo: { width: "56px", height: "56px", borderRadius: "50%", background: colors.borderSoft, flexShrink: 0, animation: "khl-skeleton-pulse 1.2s ease-in-out infinite" },
   skeletonBar: { borderRadius: "4px", background: colors.borderSoft, animation: "khl-skeleton-pulse 1.2s ease-in-out infinite" },
+  skeletonList: { paddingTop: "1rem" },
+  skeletonDayHeading: {
+    width: "9rem",
+    height: "0.9rem",              // как fontSize у dayHeading
+    margin: "0 auto 0.6rem",       // по центру, небольшой просвет до первого матча
+    borderRadius: "4px",
+    background: colors.borderSoft,
+    animation: "khl-skeleton-pulse 1.2s ease-in-out infinite",
+  },
 };
