@@ -23,7 +23,7 @@ export async function GET() {
   const today = todayWindow();
   const todayGames = await prisma.game.findMany({
     where: { date: { gte: today.start, lt: today.end } },
-    orderBy: { date: "asc", teamId: "asc" },
+    orderBy: { date: "asc", id: "asc" },
     select: GAME_SELECT,
   });
 
@@ -36,7 +36,7 @@ export async function GET() {
   const tomorrow = tomorrowWindow();
   const tomorrowGames = await prisma.game.findMany({
     where: { date: { gte: tomorrow.start, lt: tomorrow.end } },
-    orderBy: { date: "asc", teamId: "asc" },
+    orderBy: { date: "asc", id: "asc" },
     select: GAME_SELECT,
   });
 
