@@ -42,7 +42,7 @@ async function getNearestGames() {
   const today = todayWindow();
   const todayGames = await prisma.game.findMany({
     where: { date: { gte: today.start, lt: today.end } },
-    orderBy: { date: "asc" },
+    orderBy: { date: "asc", teamId: "asc" },
     select: GAME_SELECT,
   });
 
@@ -55,7 +55,7 @@ async function getNearestGames() {
   const tomorrow = tomorrowWindow();
   const tomorrowGames = await prisma.game.findMany({
     where: { date: { gte: tomorrow.start, lt: tomorrow.end } },
-    orderBy: { date: "asc" },
+    orderBy: { date: "asc", teamId: "asc" },
     select: GAME_SELECT,
   });
 
