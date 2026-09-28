@@ -369,7 +369,9 @@ function HomeContent({
             <p style={styles.emptyBody}>На {nearest.day === "today" ? "сегодня" : "завтра"} матчей не запланировано.</p>
           )}
           {nearest.games.map((game) => (
-            <GameRow key={game.id} game={game} standings={standings} compactStats showStats />
+            <div key={game.id} style={styles.nearestRow}>
+              <GameRow game={game} standings={standings} compactStats showStats />
+            </div>
           ))}
         </section>
       )}
