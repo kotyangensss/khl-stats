@@ -163,20 +163,21 @@ export function GameRow({
               </>
             )}
             {game.status === "FINISHED" && (
-              <span
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  fontSize: "1.4rem",
-                  color: colors.text,
-                  display: "inline-flex",
-                  alignItems: "baseline",
-                  gap: "0.35rem",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {game.homeScore}:{game.visitorScore}
-                {ot && <span style={{ fontFamily: "var(--font-body)", fontSize: "0.75rem", fontWeight: 600, color: colors.accent }}>{ot}</span>}
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.15rem" }}>
+                <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.4rem", color: colors.text }}>
+                  {game.homeScore}:{game.visitorScore}
+                </span>
+                <span
+                  style={{
+                    fontFamily: "var(--font-body)",
+                    fontSize: "0.68rem",
+                    fontWeight: 600,
+                    color: colors.accent,
+                    visibility: ot ? "visible" : "hidden",
+                  }}
+                >
+                  {ot || "OT"}
+                </span>
               </span>
             )}
           </span>
