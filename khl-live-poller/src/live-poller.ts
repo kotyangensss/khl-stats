@@ -101,7 +101,7 @@ function gameStartMoscow(date: Date, timeFormat: string | null): Date | null {
 function nextQuarterHourAlarm(from: Date): Date {
   const candidate = new Date(from);
   const currentQuarterMinute = Math.floor(from.getUTCMinutes() / 15) * 15;
-  candidate.setUTCMinutes(currentQuarterMinute, 20, 0);
+  candidate.setUTCMinutes(currentQuarterMinute + 1, 30, 0);
 
   if (candidate.getTime() <= from.getTime()) {
     candidate.setUTCMinutes(candidate.getUTCMinutes() + 15);
