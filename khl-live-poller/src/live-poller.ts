@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { statusFromHeader } from "./status";
 
 export interface Env {
   LIVE_POLLER: DurableObjectNamespace<LivePoller>;
@@ -292,14 +293,15 @@ export class LivePoller extends DurableObject<Env> {
 
         const normalized = normalizeGameHeader(header);
 
-        // isOnline undefined => false, явно
-        const isLive = header.isOnline ?? false;
-        const isFinished = !isLive && /заверш|оконч/i.test(normalized.status ?? "");
+        const status = statusFromHeader(
+          { isOnline: header.isOnline, status: normalized.status ?? header.online?.status },
+          candidate.status
+        );
 
         await prisma.game.update({
           where: { id: candidate.id },
           data: {
-            ...(isLive? { status: "LIVE" as const }: candidate.status === "LIVE"? { status: "FINISHED" as const }: {}),
+            status,
             ...(normalized.score?.home != null ? { homeScore: Number(normalized.score.home) } : {}),
             ...(normalized.score?.away != null ? { visitorScore: Number(normalized.score.away) } : {}),
             liveStatus: normalized.status ?? null,
@@ -308,7 +310,7 @@ export class LivePoller extends DurableObject<Env> {
           },
         });
 
-        if (isLive) anyLive = true;
+        if (status === "LIVE") anyLive = true;
       }
 
       return anyLive;

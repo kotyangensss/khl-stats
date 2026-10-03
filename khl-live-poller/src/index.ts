@@ -19,6 +19,9 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log(`[scheduled] triggered by cron: ${event.cron}`);
+    const id = env.LIVE_POLLER.idFromName("global");
+    const stub = env.LIVE_POLLER.get(id);
+    ctx.waitUntil(stub.fetch(new Request("https://khl-live-poller/wake", { method: "POST" })).then(() => undefined));
     ctx.waitUntil(runFullSync(env));
   },
 };
