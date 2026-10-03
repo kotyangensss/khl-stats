@@ -13,6 +13,8 @@
 
 import { Client } from "pg";
 import type { Env } from "./live-poller";
+import { statusFromCalendar } from "./status";
+import type { GameStatus } from "./status";
 
 const BASE_URL = "https://www.khl.ru";
 const USER_AGENT =
@@ -105,24 +107,6 @@ async function postKhl(path: string, session: Session, body: Record<string, stri
   });
   if (!response.ok) throw new Error(`${path}: ${response.status}`);
   return response.json();
-}
-
-// ---- Маппинг статусов (1-в-1 из lib/khl-client.ts) ----
-
-function gameStartUtc(game: RawGame): Date | null {
-  if (!game.date) return null;
-  const datePart = game.date.slice(0, 10);
-  const timePart = /^\d{1,2}:\d{2}$/.test(game.time_format ?? "") ? game.time_format : "00:00";
-  const parsed = new Date(`${datePart}T${timePart}:00+03:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function mapGameStatus(game: RawGame): "SCHEDULED" | "LIVE" | "FINISHED" {
-  if (game.approved === 1) return "FINISHED";
-  if (Number(game.homeScore) > 0 || Number(game.visitorScore) > 0) return "LIVE";
-  const start = gameStartUtc(game);
-  if (start && Date.now() > start.getTime() + 5 * 60 * 1000) return "LIVE";
-  return "SCHEDULED";
 }
 
 function flattenGames(games: KhlCalendarResponse["data"]["GAMES"]): RawGame[] {
@@ -225,7 +209,7 @@ async function syncGames(client: Client, games: RawGame[]): Promise<{ created: n
     id: number;
     date: Date;
     timeFormat: string | null;
-    status: string;
+    status: GameStatus;
     homeScore: number | null;
     visitorScore: number | null;
     periodScores: unknown;
@@ -252,7 +236,7 @@ async function syncGames(client: Client, games: RawGame[]): Promise<{ created: n
 
     const dateChanged = new Date(game.date).getTime() !== new Date(existing.date).getTime();
     const timeChanged = game.time_format !== existing.timeFormat;
-    const statusChanged = mapGameStatus(game) !== existing.status;
+    const statusChanged = statusFromCalendar(game, existing.status) !== existing.status;
     const homeChanged = toIntOrNull(game.homeScore) !== existing.homeScore;
     const visitorChanged = toIntOrNull(game.visitorScore) !== existing.visitorScore;
     const otChanged = (game.ots || null) !== existing.overtime;
@@ -281,7 +265,7 @@ async function syncGames(client: Client, games: RawGame[]): Promise<{ created: n
         toIntOrNull(game.tnId),
         new Date(game.date),
         game.time_format,
-        mapGameStatus(game),
+        statusFromCalendar(game),
         toIntOrNull(game.teama),
         toIntOrNull(game.teamb),
         toIntOrNull(game.arenaid),
@@ -321,7 +305,7 @@ async function syncGames(client: Client, games: RawGame[]): Promise<{ created: n
         toIntOrNull(game.id),
         new Date(game.date),
         game.time_format,
-        mapGameStatus(game),
+        statusFromCalendar(game, dbById.get(game.id)?.status),
         toIntOrNull(game.homeScore),
         toIntOrNull(game.visitorScore),
         game.scP ? JSON.stringify(game.scP) : null,
