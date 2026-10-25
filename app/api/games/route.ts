@@ -5,7 +5,7 @@ import type { Game } from "@/lib/types";
 
 export const revalidate = 0;
 
-type Scope = "upcoming" | "past";
+type Scope = "upcoming" | "past" | "all";
 type PrismaGame = Omit<Game, "date" | "liveUpdatedAt"> & { date: Date; liveUpdatedAt?: Date | null };
 
 function toGame(game: PrismaGame): Game {
@@ -14,7 +14,7 @@ function toGame(game: PrismaGame): Game {
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const scope: Scope = searchParams.get("scope") === "past" ? "past" : "upcoming";
+  const scope: Scope = searchParams.get("scope") === "all" ? "all" : searchParams.get("scope") === "past" ? "past" : "upcoming";
   const rawMonth = searchParams.get("month");
   const month = isValidMonthKey(rawMonth) ? rawMonth : currentMonthKey();
 
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const games = await prisma.game.findMany({
     where: {
       date: { gte: start, lt: end },
-      ...(scope === "past" ? { status: "FINISHED" } : { status: { not: "FINISHED" } }),
+      ...(scope === "all" ? {} : scope === "past" ? { status: "FINISHED" } : { status: { not: "FINISHED" } }),
       ...(teamId !== null
         ? { OR: [{ teamA: { id: teamId } }, { teamB: { id: teamId } }] }
         : {}),

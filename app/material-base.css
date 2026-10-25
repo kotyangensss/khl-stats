@@ -1,0 +1,917 @@
+:root {
+  --font-body: 'Segoe UI',Arial,sans-serif;
+  --font-display: 'Segoe UI',Arial,sans-serif;
+  --gutter: 28px;
+  --background: #111;
+  --foreground: #eee;
+  --khl-accent: #d55665
+}
+* {
+  box-sizing: border-box
+}
+html {
+  scroll-padding-top: 140px
+}
+body {
+  margin: 0
+}
+h1,h2,h3,p {
+  margin: 0
+}
+a {
+  color: inherit
+}
+button,input {
+  font: inherit
+}
+[hidden] {
+  display: none!important
+}
+.hockey-app {
+  font-size: 14px;
+  line-height: 1.5
+}
+.hockey-app button {
+  border: 1px solid #ffffff28;
+  background: #303030;
+  color: #eee;
+  border-radius: 5px;
+  padding: 8px 14px;
+  min-height: 38px;
+  cursor: pointer;
+  transition: background-color .15s,box-shadow .15s;
+  box-shadow: 0 1px 2px #0004
+}
+.hockey-app button:hover {
+  background: #3b3b3b
+}
+.hockey-app button[aria-pressed=true] {
+  background: #b83c50;
+  border-color: #ca5264;
+  box-shadow: 0 2px 5px #0005
+}
+.hockey-app button:disabled {
+  opacity: .45;
+  cursor: not-allowed
+}
+.hockey-app :focus-visible {
+  outline: 2px solid #e88895;
+  outline-offset: 3px
+}
+.sr-only,.skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0
+}
+.skip-link:focus {
+  position: fixed;
+  z-index: 100;
+  top: 12px;
+  left: 12px;
+  padding: 12px;
+  background: #b83c50;
+  color: white
+}
+.flow-appbar .cat-preference {
+  margin-left: auto;
+  position: relative
+}
+.cat-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px!important;
+  background: transparent!important
+}
+.cat-toggle i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #d97d8c
+}
+.cat-toggle[data-enabled=false] i {
+  background: #777
+}
+.neko-settings {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 60
+}
+.hockey-app .neko-pet {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  padding: 0;
+  width: 64px;
+  height: 64px;
+  min-height: 0
+}
+.flow-appbar {
+  z-index: 30
+}
+.flow-appbar>div {
+  min-height: 74px
+}
+.flow-back-link {
+  display: inline-block;
+  font-size: 13px;
+  color: #ccc;
+  text-decoration: none;
+  margin: 0 0 30px;
+  padding: 6px 0
+}
+.flow-back-link:hover {
+  color: #fff
+}
+.flow-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+  min-height: 44px;
+  flex-wrap: wrap
+}
+.team-combobox {
+  position: relative;
+  width: 280px;
+  max-width: 100%
+}
+.team-combobox>input {
+  width: 100%;
+  height: 44px;
+  padding: 0 38px 0 14px;
+  border: 1px solid #ffffff30;
+  border-radius: 5px;
+  color: #eee;
+  background: #252525;
+  box-shadow: 0 1px 3px #0005
+}
+.team-combobox>span {
+  position: absolute;
+  right: 14px;
+  top: 9px;
+  pointer-events: none;
+  color: #aaa
+}
+.team-combobox>[role=listbox] {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+  background: #303030;
+  border: 1px solid #ffffff24;
+  border-radius: 7px;
+  box-shadow: 0 6px 20px #0008;
+  z-index: 40
+}
+.team-combobox [role=option] {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 7px 9px;
+  border-radius: 4px;
+  cursor: pointer
+}
+.team-combobox [role=option].is-active,.team-combobox [role=option]:hover {
+  background: #ffffff0d
+}
+.team-combobox [aria-selected=true] {
+  color: #f0a6b2
+}
+.team-combobox [role=option]>span:nth-child(3) {
+  margin-left: auto
+}
+.team-combobox p {
+  padding: 12px;
+  color: #aaa;
+  font-size: 12px
+}
+.material-date-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 7px
+}
+.date-strip-scroll {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+  overflow: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  padding: 2px 0 5px
+}
+.hockey-app .strip-day {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex: 1 0 78px;
+  height: 72px;
+  gap: 4px;
+  padding: 7px;
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+  scroll-snap-align: center;
+  white-space: nowrap
+}
+.strip-day>span {
+  font-size: 11px;
+  text-transform: capitalize
+}
+.strip-day>b {
+  font-size: 14px;
+  font-weight: 600
+}
+.strip-day>i {
+  height: 3px;
+  width: 3px;
+  border-radius: 50%
+}
+.strip-day .has-matches {
+  background: currentColor
+}
+.hockey-app .strip-day.strip-selected {
+  background: #b83c50
+}
+.hockey-app .strip-day.strip-today:not(.strip-selected) {
+  border-color: #d5566559
+}
+.hockey-app .strip-arrow {
+  padding: 0;
+  min-width: 30px;
+  box-shadow: none;
+  background: transparent;
+  border: 0;
+  font-size: 25px
+}
+.hockey-app .strip-reset {
+  font-size: 12px;
+  padding: 8px 12px
+}
+.schedule-loading {
+  min-height: 20px;
+  color: #999;
+  font-size: 11px;
+  margin: -15px 0 10px
+}
+.schedule-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  background: #492a30;
+  border: 1px solid #a75261;
+  padding: 15px;
+  margin: 0 0 24px;
+  border-radius: 6px
+}
+.schedule-game {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 122px minmax(0,1fr) 16px;
+  align-items: center;
+  gap: 20px;
+  min-height: 116px;
+  padding: 22px 28px;
+  border-bottom: 1px solid #ffffff0c;
+  color: #eee;
+  text-decoration: none;
+  transition: background .15s
+}
+.schedule-game:last-child {
+  border-bottom: 0
+}
+.schedule-game:hover {
+  background: #ffffff06
+}
+.schedule-club {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  min-width: 0;
+  text-align: right;
+  flex-direction: row-reverse
+}
+.schedule-club>div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px
+}
+.schedule-club strong {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere
+}
+.schedule-club.visitor {
+  justify-content: flex-start;
+  flex-direction: row;
+  text-align: left
+}
+.game-status {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 5px;
+  text-align: center;
+  min-width: 0;
+  font-variant-numeric: tabular-nums
+}
+.game-status strong {
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 650;
+  white-space: nowrap
+}
+.game-status>span {
+  color: #999;
+  font-size: 10px;
+  line-height: 16px
+}
+.game-status.is-live>span {
+  color: #f296a5
+}
+.row-arrow {
+  color: #999
+}
+.study-empty {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px
+}
+.study-empty h3 {
+  font-size: 16px
+}
+.study-empty p {
+  color: #aaa;
+  font-size: 13px
+}
+.live-dot {
+  display: inline-block;
+  border-radius: 50%;
+  width: 5px;
+  height: 5px;
+  background: #ee8b9b;
+  margin-right: 6px
+}
+.khl-logo {
+  align-items: center;
+  justify-content: center
+}
+.khl-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0!important
+}
+.league-table .khl-logo {
+  width: 30px;
+  height: 30px
+}
+.league-heading h1 {
+  margin-top: 5px
+}
+.league-heading p {
+  margin-top: 8px
+}
+.details-page {
+  padding: 36px 38px 32px;
+  min-height: calc(100svh - 74px)
+}
+.details-breadcrumb {
+  margin-bottom: 28px
+}
+.match-heading {
+  border: 1px solid #ffffff10;
+  background: #303030;
+  padding: 18px 24px;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px
+}
+.scoreboard {
+  background: #252525;
+  border: 1px solid #ffffff10;
+  border-top: 0;
+  padding: 38px 24px;
+  min-height: 280px;
+  grid-template-columns: minmax(0,1fr) 220px minmax(0,1fr);
+  gap: 28px;
+  box-shadow: 0 4px 12px #0003
+}
+.score-club>strong {
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -.3px;
+  font-weight: 600
+}
+.score-club {
+  gap: 14px
+}
+.match-score .game-status strong {
+  font-size: 58px;
+  font-weight: 650
+}
+.match-score .game-status>span {
+  margin-top: 8px
+}
+.period-scores {
+  background: #252525;
+  padding: 20px;
+  border: 1px solid #ffffff10;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  gap: 20px 40px
+}
+.period-scores dd {
+  font-size: 22px
+}
+.details-section-heading h2 {
+  font-size: 18px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600
+}
+.goal-section,.match-comparison,.details-columns>section {
+  background: #252525;
+  border: 1px solid #ffffff10;
+  border-radius: 8px;
+  box-shadow: 0 3px 10px #0003;
+  overflow: hidden
+}
+.goal-section {
+  margin-top: 24px;
+  padding: 24px
+}
+.goal-time strong {
+  font-size: 20px
+}
+.goal-score {
+  font-size: 24px
+}
+.goal-list>li {
+  padding: 20px 0;
+  border-color: #ffffff10
+}
+.match-comparison {
+  margin-top: 24px
+}
+.match-comparison>summary {
+  padding: 22px 24px;
+  font-size: 17px;
+  font-weight: 600
+}
+.details-columns {
+  margin-top: 24px;
+  gap: 24px
+}
+.details-columns>section>.details-section-heading {
+  padding: 20px;
+  margin: 0;
+  background: #303030
+}
+.details-empty {
+  padding: 22px 20px;
+  font-size: 12px;
+  color: #aaa
+}
+.history-match {
+  padding: 18px 20px;
+  grid-template-columns: 48px minmax(0,1fr) 78px minmax(0,1fr) 12px;
+  gap: 10px;
+  min-height: 104px;
+  border-color: #ffffff0d
+}
+.history-club {
+  font-size: 12px
+}
+.history-match .game-status strong {
+  font-size: 23px
+}
+.history-match .game-status>span {
+  font-size: 9px
+}
+.standings-scroll {
+  overflow: auto
+}
+.standings-table {
+  min-width: 1080px;
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums
+}
+.standings-table th,.standings-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #ffffff10;
+  white-space: nowrap
+}
+.standings-table thead {
+  color: #aaa;
+  background: #303030
+}
+.standings-table tbody th a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none
+}
+.table-hint {
+  font-size: 11px;
+  color: #999;
+  padding: 18px 24px;
+  min-width: 700px
+}
+.details-footer {
+  margin-top: 28px;
+  border-color: #ffffff15
+}
+.team-overview h2 {
+  margin: 0
+}
+.team-table-all {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-top: 1px solid #ffffff10;
+  color: #ccc;
+  font-size: 12px;
+  text-decoration: none
+}
+.team-season-stats {
+  background: #222;
+  border: 1px solid #ffffff10;
+  border-radius: 9px;
+  overflow: hidden;
+  margin: 0
+}
+.team-season-stats>summary {
+  padding: 20px;
+  font-size: 14px;
+  font-weight: 600
+}
+.team-stat-grid {
+  grid-template-columns: 1fr;
+  padding: 0 20px 20px;
+  gap: 0
+}
+.team-stat-grid>div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-color: #ffffff10
+}
+.team-stat-grid dt {
+  font-size: 11px
+}
+.team-stat-grid dd {
+  font-size: 16px;
+  margin: 0
+}
+.team-games-card .history-club {
+  font-size: 13px
+}
+.team-games-card .history-match {
+  padding: 18px 20px
+}
+.team-recent-games .khl-logo {
+  min-height: 30px
+}
+.team-next-result .game-status strong {
+  font-size: 25px
+}
+.team-next-result .game-status>span {
+  font-size: 10px
+}
+.team-page-identity>.khl-logo {
+  flex-shrink: 0
+}
+.local-demo-note {
+  position: fixed;
+  bottom: 6px;
+  right: 8px;
+  z-index: 15;
+  background: #222e;
+  color: #999;
+  border: 1px solid #ffffff20;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 9px;
+  pointer-events: none
+}
+@media(min-width:1900px) {
+  .flow-main,.flow-appbar>div {
+    max-width: 1600px
+  }
+  .flow-main {
+    padding-left: 48px;
+    padding-right: 48px
+  }
+  .schedule-game {
+    min-height: 126px
+  }
+  .schedule-club strong {
+    font-size: 18px
+  }
+  .game-status strong {
+    font-size: 29px
+  }
+  .team-overview-grid {
+    grid-template-columns: minmax(0,1fr) 360px
+  }
+}
+@media(max-width:1100px) {
+  .schedule-game {
+    gap: 14px
+  }
+  .schedule-club {
+    gap: 10px
+  }
+  .schedule-club strong {
+    font-size: 14px
+  }
+  .scoreboard {
+    grid-template-columns: minmax(0,1fr) 160px minmax(0,1fr)
+  }
+  .match-score .game-status strong {
+    font-size: 48px
+  }
+}
+@media(max-width:760px) {
+  .flow-appbar>div {
+    min-height: 62px;
+    padding: 0 14px;
+    gap: 16px
+  }
+  .flow-brand {
+    font-size: 19px
+  }
+  .flow-site-nav {
+    gap: 14px
+  }
+  .flow-site-nav>a {
+    font-size: 12px
+  }
+  .cat-toggle {
+    font-size: 11px!important;
+    padding: 6px 8px!important;
+    gap: 5px
+  }
+  .cat-toggle>span {
+    display: none
+  }
+  .flow-main {
+    padding: 24px 14px 80px
+  }
+  .flow-title h1 {
+    font-size: 25px
+  }
+  .flow-filter-row {
+    gap: 10px
+  }
+  .team-combobox {
+    width: 100%
+  }
+  .flow-date-strip {
+    flex-wrap: wrap;
+    padding: 8px 5px;
+    gap: 4px
+  }
+  .date-strip-scroll {
+    flex-basis: calc(100% - 68px);
+    scrollbar-width: none
+  }
+  .hockey-app .strip-day {
+    flex: 0 0 66px;
+    height: 65px;
+    padding: 5px
+  }
+  .hockey-app .strip-reset {
+    margin-left: auto;
+    min-height: 32px;
+    padding: 5px 10px
+  }
+  .hockey-app .strip-arrow {
+    min-width: 26px
+  }
+  .schedule-game {
+    grid-template-columns: minmax(0,1fr) 90px;
+    grid-template-areas: 'home score' 'away score';
+    gap: 12px;
+    padding: 20px 16px;
+    min-height: 116px
+  }
+  .schedule-club {
+    grid-area: home;
+    justify-content: flex-start;
+    text-align: left;
+    flex-direction: row;
+    gap: 10px
+  }
+  .schedule-club.visitor {
+    grid-area: away
+  }
+  .schedule-club .khl-logo,.schedule-club .khl-logo img {
+    width: 30px!important;
+    height: 30px!important
+  }
+  .schedule-club strong {
+    font-size: 14px;
+    line-height: 20px
+  }
+  .schedule-game>.game-status {
+    grid-area: score
+  }
+  .schedule-game .game-status strong {
+    font-size: 24px
+  }
+  .schedule-game .game-status>span {
+    font-size: 9px;
+    line-height: 14px
+  }
+  .row-arrow {
+    display: none
+  }
+  .schedule-error {
+    font-size: 12px;
+    align-items: flex-start;
+    flex-direction: column
+  }
+  .league-table .khl-logo {
+    width: 25px;
+    height: 25px
+  }
+  .details-page {
+    padding: 24px 14px 80px
+  }
+  .match-heading {
+    justify-content: center;
+    gap: 8px 18px;
+    padding: 16px;
+    font-size: 11px
+  }
+  .scoreboard {
+    grid-template-columns: minmax(0,1fr) 104px minmax(0,1fr);
+    gap: 8px;
+    min-height: 240px;
+    padding: 26px 12px
+  }
+  .score-club {
+    grid-row: auto;
+    gap: 12px
+  }
+  .score-club>strong {
+    font-size: 15px;
+    line-height: 21px
+  }
+  .score-club .khl-logo,.score-club .khl-logo img {
+    width: 56px!important;
+    height: 56px!important
+  }
+  .club-side {
+    font-size: 9px
+  }
+  .score-club>span:last-child:not(.khl-logo) {
+    display: none!important
+  }
+  .match-score {
+    grid-column: auto;
+    grid-row: auto
+  }
+  .match-score .game-status strong {
+    font-size: 32px
+  }
+  .match-score .game-status>span {
+    font-size: 10px;
+    margin-top: 8px
+  }
+  .match-decision {
+    font-size: 9px
+  }
+  .period-scores {
+    gap: 14px 24px
+  }
+  .period-scores dd {
+    font-size: 19px
+  }
+  .period-scores dt {
+    font-size: 9px
+  }
+  .goal-section {
+    padding: 20px 16px
+  }
+  .goal-list>li {
+    grid-template-columns: 56px minmax(0,1fr) 42px;
+    gap: 12px
+  }
+  .goal-scorer strong {
+    font-size: 13px
+  }
+  .goal-score {
+    font-size: 21px
+  }
+  .details-section-heading h2 {
+    font-size: 16px
+  }
+  .details-columns {
+    gap: 22px
+  }
+  .history-match {
+    grid-template-columns: minmax(0,1fr) 70px minmax(0,1fr);
+    padding: 16px!important;
+    gap: 8px
+  }
+  .history-club,.team-games-card .history-club {
+    font-size: 11px;
+    gap: 6px
+  }
+  .history-club .khl-logo,.history-club .khl-logo img {
+    width: 24px!important;
+    height: 24px!important
+  }
+  .history-visitor {
+    flex-direction: row;
+    text-align: left
+  }
+  .history-arrow {
+    display: none
+  }
+  .history-match .game-status strong {
+    font-size: 21px
+  }
+  .team-summary-grid {
+    grid-template-columns: 1fr
+  }
+  .team-overview .team-page-identity>.khl-logo,.team-overview .team-page-identity>.khl-logo img {
+    width: 70px!important;
+    height: 70px!important
+  }
+  .team-overview .team-page-identity h1 {
+    font-size: 27px;
+    line-height: 35px
+  }
+  .team-overview-grid {
+    gap: 22px
+  }
+  .team-overview .team-identity-card {
+    gap: 18px
+  }
+  .team-recent-games {
+    padding-bottom: 8px
+  }
+  .team-overview .team-form-card>p {
+    margin-top: 10px
+  }
+  .team-stat-grid {
+    grid-template-columns: 1fr
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  html {
+    scroll-behavior: auto
+  }
+  .hockey-app * {
+    transition: none!important;
+    animation: none!important
+  }
+}
+@media(min-width:761px) {
+  .schedule-club {
+    flex-direction: row
+  }
+  .schedule-club>.khl-logo {
+    order: 2
+  }
+  .schedule-club>div {
+    order: 1
+  }
+  .schedule-club.visitor>.khl-logo {
+    order: 0
+  }
+  .schedule-club.visitor>div {
+    order: 0
+  }
+}
+.team-table-context .is-selected-team {
+  background: #b83c5026
+}
+.team-season-stats {
+  order: 4
+}

@@ -2,6 +2,33 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Local UI testing without a database
+
+```bash
+npm run dev:demo
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). This runs the actual Next.js application, including server pages and API routes, with a read-only in-memory dataset: 22 teams, four divisions, past results, a live match and upcoming games from 120 days before to 180 days after startup. Month navigation, saved team filters, standings sorting, game details and team pages use the same application logic as the deployed site. Dates, scores and match IDs in this mode are illustrative. The live clock/score is a fixed scenario, not a live KHL feed.
+
+The launcher binds to loopback only and enables `KHL_LOCAL_DEMO=1` for that process. Sample data is disabled in production and on Vercel; no real database credentials are used. Restarting regenerates the fixture dates. Ordinary `npm run dev` retains the existing database connection behavior.
+
+For a fresh dependency install in PowerShell, Prisma's generator needs a syntactically valid CLI URL even though demo mode does not connect to it:
+
+```powershell
+$env:DIRECT_URL = 'postgresql://demo:demo@127.0.0.1:1/local_demo'
+npm ci
+npm run dev:demo
+```
+
+Checks:
+
+```bash
+npm test
+node dev/smoke-local-demo.mjs
+```
+
+The HTTP smoke check requires the demo server to be running. It covers pages, API filters/month windows, standings groups, linked game/team details and missing IDs. It does not validate real PostgreSQL queries or the external KHL synchronizer.
+
 First, run the development server:
 
 ```bash

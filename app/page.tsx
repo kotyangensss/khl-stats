@@ -1,3 +1,4 @@
+import { validDay, moscowToday, monthFromDay } from "@/lib/material-schedule";
 import { prisma } from "@/lib/db";
 import { getStandingsSafe } from "@/lib/standings";
 import {
@@ -5,15 +6,13 @@ import {
   isValidMonthKey,
   monthWindow,
   sortGamesByDateAndTime,
-  todayWindow,
-  tomorrowWindow,
 } from "@/lib/schedule";
 import type { Game } from "@/lib/types";
 import HomeBrowser from "./HomeBrowser";
 
 export const revalidate = 60;
 
-type Scope = "upcoming" | "past";
+type Scope = "upcoming" | "past" | "all";
 
 type PrismaGame = Omit<Game, "date" | "liveUpdatedAt"> & { date: Date; liveUpdatedAt?: Date | null };
 
@@ -38,36 +37,12 @@ function toGame(game: PrismaGame): Game {
   return { ...game, date: game.date.toISOString(), liveUpdatedAt: game.liveUpdatedAt?.toISOString() ?? null };
 }
 
-async function getNearestGames() {
-  const today = todayWindow();
-  const todayGames = await prisma.game.findMany({
-    where: { date: { gte: today.start, lt: today.end } },
-    orderBy: [{ date: "asc" }, { id: "asc" }],
-    select: GAME_SELECT,
-  });
-
-  const hasUnfinishedToday = todayGames.some((g) => g.status !== "FINISHED");
-
-  if (hasUnfinishedToday) {
-    return { day: "today" as const, date: today.start.toISOString(), games: sortGamesByDateAndTime(todayGames.map(toGame)) };
-  }
-
-  const tomorrow = tomorrowWindow();
-  const tomorrowGames = await prisma.game.findMany({
-    where: { date: { gte: tomorrow.start, lt: tomorrow.end } },
-    orderBy: [{ date: "asc" }, { id: "asc" }],
-    select: GAME_SELECT,
-  });
-
-  return { day: "tomorrow" as const, date: tomorrow.start.toISOString(), games: sortGamesByDateAndTime(tomorrowGames.map(toGame)) };
-}
-
 async function getMonthGames(scope: Scope, month: string, teamId: number | null) {
   const { start, end } = monthWindow(month);
   const games = await prisma.game.findMany({
     where: {
       date: { gte: start, lt: end },
-      ...(scope === "past" ? { status: "FINISHED" } : { status: { not: "FINISHED" } }),
+      ...(scope === "all" ? {} : scope === "past" ? { status: "FINISHED" } : { status: { not: "FINISHED" } }),
       ...(teamId !== null ? { OR: [{ teamAId: teamId }, { teamBId: teamId }] } : {}),
     },
     orderBy: { date: scope === "past" ? "desc" : "asc" },
@@ -83,17 +58,16 @@ export default async function Home({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const scope: Scope = params.tab === "past" ? "past" : "upcoming";
+  const scope: Scope = "all";
   const rawMonth = Array.isArray(params.month) ? params.month[0] : params.month;
-  const month = isValidMonthKey(rawMonth) ? rawMonth : currentMonthKey();
+  const month = validDay(String(params.date ?? "")) ? monthFromDay(String(params.date)) : isValidMonthKey(rawMonth) ? rawMonth : currentMonthKey();
   const rawTeam = Array.isArray(params.team) ? params.team[0] : params.team;
   const teamId = rawTeam && /^\d+$/.test(rawTeam) ? Number(rawTeam) : null;
 
-  const [nearest, initialData, initialStandings] = await Promise.all([
-    getNearestGames(),
-    getMonthGames(scope, month, teamId),
+  const [initialData, initialStandings] = await Promise.all([
+    getMonthGames(scope, month, null),
     getStandingsSafe(),
   ]);
 
-  return <HomeBrowser initialNearest={nearest} initialData={initialData} initialStandings={initialStandings} />;
+  return <HomeBrowser initialData={initialData} initialStandings={initialStandings} initialDate={validDay(String(params.date ?? "")) ? String(params.date) : moscowToday()} initialTeamId={teamId} />;
 }

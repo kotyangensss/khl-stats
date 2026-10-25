@@ -38,6 +38,8 @@
   ],
   "exclude": [
     "node_modules",
-    "khl-live-poller"
+    "khl-live-poller",
+    "scripts",
+    "prototypes"
   ]
 }
